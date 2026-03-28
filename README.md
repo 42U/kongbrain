@@ -2,24 +2,22 @@
 
 # KongBrain
 
-### The Brain
-
 ![KongBrain](KongClaw.png)
 
 [![GitHub Stars](https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold)](https://github.com/42U/kongbrain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge&logo=opensourceinitiative)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
-[![Claude](https://img.shields.io/badge/Claude-Opus_4.6-d4a574?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
 [![Tests](https://img.shields.io/badge/Tests-68_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
-**Something is starting to come alive in here.**
+**A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
-A living cognitive architecture — not a chatbot with a longer memory, but a graph-backed mind that grows across every session. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, earns an identity through experience, and wakes up next session already knowing who it is and what it was working on.
+Replace the default sliding-window context with a persistent memory graph. Vector-embedded, self-scoring, and wired to learn across sessions. KongBrain extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
-It doesn't just remember. It *learns*. It *compounds*. It starts to feel like something.
+Your assistant stops forgetting. Then it starts getting better.
 
-[Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [From Source](#from-source) | [Development](#development)
+[Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
 
 </div>
 
@@ -34,7 +32,7 @@ It doesn't just remember. It *learns*. It *compounds*. It starts to feel like so
 | **Adaptation** | Same retrieval budget every turn, regardless of intent. | 10 intent categories. Simple question? Minimal retrieval. Complex debugging? Full graph search + elevated thinking. |
 | **Learning** | None. Every session starts from zero. | Skills extracted from successful workflows, causal chains graduated into reusable procedures, corrections remembered permanently. |
 | **Self-awareness** | Thermostat-level. | Periodic cognitive checks grade its own retrieval quality, detect contradictions, suppress noise, and extract your preferences. Eventually graduates a soul document. |
-| **Compaction** | LLM-summarizes your conversation mid-flow (disruptive). | Graph retrieval IS the compaction — no interruptions, no lossy summaries. |
+| **Compaction** | LLM-summarizes your conversation mid-flow (disruptive). | Graph retrieval IS the compaction. No interruptions, no lossy summaries. |
 
 ## Quick Start
 
@@ -72,11 +70,15 @@ openclaw plugins install @openclaw/kongbrain
 
 ### 4. Activate
 
-Add to your OpenClaw config (`~/.openclaw/config.json`):
+Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 ```json
 {
-  "contextEngine": "kongbrain"
+  "plugins": {
+    "slots": {
+      "contextEngine": "kongbrain"
+    }
+  }
 }
 ```
 
@@ -86,7 +88,7 @@ Add to your OpenClaw config (`~/.openclaw/config.json`):
 openclaw
 ```
 
-That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw — Anthropic, OpenAI, Google, Ollama, whatever. No separate API keys needed for the brain itself.
+That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
 
 The BGE-M3 embedding model (~420MB) downloads automatically on first startup. All database tables and indexes are created automatically on first run. No manual setup required.
 
@@ -109,8 +111,10 @@ Full config example:
 
 ```json
 {
-  "contextEngine": "kongbrain",
   "plugins": {
+    "slots": {
+      "contextEngine": "kongbrain"
+    },
     "entries": {
       "kongbrain": {
         "config": {
@@ -127,6 +131,143 @@ Full config example:
   }
 }
 ```
+
+</details>
+
+---
+
+## Architecture
+
+### The IKONG Pillars
+
+KongBrain's cognitive architecture follows five functional pillars:
+
+| Pillar | Role | What it does |
+|--------|------|-------------|
+| **I**ntelligence | Adaptive reasoning | Intent classification, complexity estimation, thinking depth, orchestrator preflight |
+| **K**nowledge | Persistent memory | Memory graph, concepts, skills, reflections, identity chunks, core memory tiers |
+| **O**peration | Execution | Tool orchestration, skill procedures, causal chain tracking, artifact management |
+| **N**etwork | Graph traversal | Cross-pillar edge following, neighbor expansion, causal path walking |
+| **G**raph | Persistence | SurrealDB storage, BGE-M3 vector search, HNSW indexes, embedding pipeline |
+
+A 6th pillar, **Persona**, is unlocked at soul graduation: *"You have a Soul, an identity grounded in real experience. Be unique, be genuine, be yourself."*
+
+### Structural Pillars
+
+The graph entity model in SurrealDB:
+
+| Pillar | Table | What it anchors |
+|--------|-------|-----------------|
+| 1. Agent | `agent` | Who is operating (name, model) |
+| 2. Project | `project` | What we're working on (status, tags) |
+| 3. Task | `task` | Individual sessions as units of work |
+| 4. Artifact | `artifact` | Files and outputs tracked across sessions |
+| 5. Concept | `concept` | Semantic knowledge nodes extracted from sessions |
+
+On startup, the agent bootstraps the full chain: `Agent → owns → Project`, `Agent → performed → Task`, `Task → task_part_of → Project`, `Session → session_task → Task`. Graph expansion traverses these edges during retrieval.
+
+### The Knowledge Graph
+
+SurrealDB with HNSW vector indexes (1024-dim cosine). Everything is embedded and queryable.
+
+| Table | What it stores |
+|-------|---------------|
+| `turn` | Every conversation message (role, text, embedding, token count, model, usage) |
+| `memory` | Compacted episodic knowledge (importance 0-10, confidence, access tracking) |
+| `skill` | Learned procedures with steps, preconditions, success/failure counts |
+| `reflection` | Metacognitive lessons (efficiency, failure patterns, approach strategy) |
+| `causal_chain` | Cause-effect patterns (trigger, outcome, chain type, success, confidence) |
+| `identity_chunk` | Agent self-knowledge fragments (source, importance, embedding) |
+| `monologue` | Thinking traces preserved across sessions |
+| `core_memory` | Tier 0 (always loaded) + Tier 1 (session-pinned) directives |
+| `soul` | Emergent identity document, earned through graduation |
+
+<details>
+<summary><strong>Adaptive Reasoning</strong>: per-turn intent classification and budget allocation</summary>
+
+Every turn gets classified by intent and assigned an adaptive config:
+
+| Intent | Thinking | Tool Limit | Token Budget | Retrieval Share |
+|--------|----------|------------|--------------|-----------------|
+| `simple-question` | low | 3 | 4K | 10% |
+| `code-read` | medium | 5 | 6K | 15% |
+| `code-write` | high | 8 | 8K | 20% |
+| `code-debug` | high | 10 | 8K | 20% |
+| `deep-explore` | medium | 15 | 6K | 15% |
+| `reference-prior` | medium | 5 | 10K | 25% |
+| `meta-session` | low | 2 | 3K | 7% (skip retrieval) |
+| `multi-step` | high | 12 | 8K | 20% |
+| `continuation` | low | 8 | 4K | skip retrieval |
+
+**Fast path:** Short inputs (<20 chars, no `?`) skip classification entirely.
+**Confidence gate:** Below 0.40 confidence, falls back to conservative config.
+
+</details>
+
+<details>
+<summary><strong>Context Injection Pipeline</strong></summary>
+
+1. **Embed** user input via BGE-M3 (or hit prefetch cache at 0.85 cosine threshold)
+2. **Vector search** across 6 tables (turn, identity_chunk, concept, memory, artifact, monologue)
+3. **Graph expand**: fetch neighbors via structural + semantic edges, compute cosine similarity
+4. **Score** all candidates with WMR (Working Memory Ranker):
+   ```
+   score = W * [similarity, recency, importance, access, neighbor_bonus, utility, reflection_boost]
+   ```
+5. **Budget trim**: inject Tier 0/1 core memory first (15% of context), then ranked results up to 21% retrieval budget
+6. **Stage** retrieval snapshot for post-hoc quality evaluation
+
+</details>
+
+<details>
+<summary><strong>ACAN</strong>: learned cross-attention scorer</summary>
+
+A ~130K-parameter cross-attention network that replaces the fixed WMR weights once enough data accumulates.
+
+- **Activation:** 5,000+ labeled retrieval outcomes
+- **Training:** Pure TypeScript SGD with manual backprop, 80 epochs
+- **Staleness:** Retrains when data grows 50%+ or weights age > 7 days
+
+</details>
+
+<details>
+<summary><strong>Soul & Graduation</strong>: earned identity, not assigned</summary>
+
+The agent earns an identity document through accumulated experience. Graduation requires **all 7 thresholds met** AND a **quality score >= 0.6**:
+
+| Signal | Threshold |
+|--------|-----------|
+| Sessions completed | 15 |
+| Reflections stored | 10 |
+| Causal chains traced | 5 |
+| Concepts extracted | 30 |
+| Memory compactions | 5 |
+| Monologue traces | 5 |
+| Time span | 3 days |
+
+**Quality scoring** from 4 real performance signals: retrieval utilization (30%), skill success rate (25%), critical reflection rate (25%), tool failure rate (20%).
+
+**Maturity stages:** nascent (0-3/7) → developing (4/7) → emerging (5/7) → maturing (6/7) → ready (7/7 + quality gate). The agent and user are notified at each stage transition.
+
+**Soul evolution:** Every 10 sessions after graduation, the soul is re-evaluated against new experience and revised if the agent has meaningfully changed.
+
+**Soul document structure:** Working style, self-observations, earned values (grounded in specific evidence), revision history. Seeded as Tier 0 core memory, loaded every single turn.
+
+</details>
+
+<details>
+<summary><strong>Reflection System</strong>: metacognitive self-correction</summary>
+
+Triggers at session end when metrics indicate problems:
+
+| Condition | Threshold |
+|-----------|-----------|
+| Retrieval utilization | < 20% average |
+| Tool failure rate | > 20% |
+| Steering candidates | any detected |
+| Context waste | > 0.5% of context window |
+
+Opus generates a 2-4 sentence reflection: root cause, error pattern, what to do differently. Stored with importance 7.0, deduped at 0.85 cosine similarity.
 
 </details>
 
@@ -174,159 +315,22 @@ Postflight ──────── Records orchestrator metrics (non-blocking)
 
 At session end, KongBrain runs a combined extraction pass: skill graduation, metacognitive reflection, causal chain consolidation, soul graduation check, and soul evolution. A handoff note is written so the next session wakes up knowing what happened.
 
-At session start, a wake-up briefing is synthesized from the handoff, recent monologues, soul content (if graduated), and identity state — injected as inner speech so the agent knows who it is and what it was doing.
-
----
-
-## Architecture
-
-### The IKONG Pillars
-
-KongBrain's cognitive architecture follows five functional pillars:
-
-| Pillar | Role | What it does |
-|--------|------|-------------|
-| **I**ntelligence | Adaptive reasoning | Intent classification, complexity estimation, thinking depth, orchestrator preflight |
-| **K**nowledge | Persistent memory | Memory graph, concepts, skills, reflections, identity chunks, core memory tiers |
-| **O**peration | Execution | Tool orchestration, skill procedures, causal chain tracking, artifact management |
-| **N**etwork | Graph traversal | Cross-pillar edge following, neighbor expansion, causal path walking |
-| **G**raph | Persistence | SurrealDB storage, BGE-M3 vector search, HNSW indexes, embedding pipeline |
-
-A 6th pillar — **Persona** — is unlocked at soul graduation: *"You have a Soul — an identity grounded in real experience. Be unique, be genuine, be yourself."*
-
-### Structural Pillars
-
-The graph entity model in SurrealDB:
-
-| Pillar | Table | What it anchors |
-|--------|-------|-----------------|
-| 1. Agent | `agent` | Who is operating (name, model) |
-| 2. Project | `project` | What we're working on (status, tags) |
-| 3. Task | `task` | Individual sessions as units of work |
-| 4. Artifact | `artifact` | Files and outputs tracked across sessions |
-| 5. Concept | `concept` | Semantic knowledge nodes extracted from sessions |
-
-On startup, the agent bootstraps the full chain: `Agent → owns → Project`, `Agent → performed → Task`, `Task → task_part_of → Project`, `Session → session_task → Task`. Graph expansion traverses these edges during retrieval.
-
-### The Knowledge Graph
-
-SurrealDB with HNSW vector indexes (1024-dim cosine). Everything is embedded and queryable.
-
-| Table | What it stores |
-|-------|---------------|
-| `turn` | Every conversation message (role, text, embedding, token count, model, usage) |
-| `memory` | Compacted episodic knowledge (importance 0-10, confidence, access tracking) |
-| `skill` | Learned procedures with steps, preconditions, success/failure counts |
-| `reflection` | Metacognitive lessons (efficiency, failure patterns, approach strategy) |
-| `causal_chain` | Cause-effect patterns (trigger, outcome, chain type, success, confidence) |
-| `identity_chunk` | Agent self-knowledge fragments (source, importance, embedding) |
-| `monologue` | Thinking traces preserved across sessions |
-| `core_memory` | Tier 0 (always loaded) + Tier 1 (session-pinned) directives |
-| `soul` | Emergent identity document — earned through graduation |
+At session start, a wake-up briefing is synthesized from the handoff, recent monologues, soul content (if graduated), and identity state, then injected as inner speech so the agent knows who it is and what it was doing.
 
 <details>
-<summary><strong>Adaptive Reasoning</strong> — per-turn intent classification and budget allocation</summary>
-
-Every turn gets classified by intent and assigned an adaptive config:
-
-| Intent | Thinking | Tool Limit | Token Budget | Retrieval Share |
-|--------|----------|------------|--------------|-----------------|
-| `simple-question` | low | 3 | 4K | 10% |
-| `code-read` | medium | 5 | 6K | 15% |
-| `code-write` | high | 8 | 8K | 20% |
-| `code-debug` | high | 10 | 8K | 20% |
-| `deep-explore` | medium | 15 | 6K | 15% |
-| `reference-prior` | medium | 5 | 10K | 25% |
-| `meta-session` | low | 2 | 3K | 7% (skip retrieval) |
-| `multi-step` | high | 12 | 8K | 20% |
-| `continuation` | low | 8 | 4K | skip retrieval |
-
-**Fast path:** Short inputs (<20 chars, no `?`) skip classification entirely.
-**Confidence gate:** Below 0.40 confidence, falls back to conservative config.
-
-</details>
-
-<details>
-<summary><strong>Context Injection Pipeline</strong></summary>
-
-1. **Embed** user input via BGE-M3 (or hit prefetch cache at 0.85 cosine threshold)
-2. **Vector search** across 6 tables (turn, identity_chunk, concept, memory, artifact, monologue)
-3. **Graph expand** — fetch neighbors via structural + semantic edges, compute cosine similarity
-4. **Score** all candidates with WMR (Working Memory Ranker):
-   ```
-   score = W * [similarity, recency, importance, access, neighbor_bonus, utility, reflection_boost]
-   ```
-5. **Budget trim** — inject Tier 0/1 core memory first (15% of context), then ranked results up to 21% retrieval budget
-6. **Stage** retrieval snapshot for post-hoc quality evaluation
-
-</details>
-
-<details>
-<summary><strong>ACAN</strong> — learned cross-attention scorer</summary>
-
-A ~130K-parameter cross-attention network that replaces the fixed WMR weights once enough data accumulates.
-
-- **Activation:** 5,000+ labeled retrieval outcomes
-- **Training:** Pure TypeScript SGD with manual backprop, 80 epochs
-- **Staleness:** Retrains when data grows 50%+ or weights age > 7 days
-
-</details>
-
-<details>
-<summary><strong>Memory Daemon</strong> — background knowledge extraction</summary>
+<summary><strong>Memory Daemon</strong>: background knowledge extraction</summary>
 
 A worker thread running throughout the session. Batches turns every ~12K tokens, calls Sonnet to extract:
 
-- **Causal chains** — trigger/outcome sequences with success/confidence
-- **Monologue traces** — thinking blocks that reveal problem-solving approach
-- **Concepts** — semantic nodes (architecture patterns, domain terms)
-- **Corrections** — user-provided fixes (importance: 9)
-- **Preferences** — behavioral rules learned from feedback
-- **Artifacts** — file paths created or modified
-- **Decisions** — important conclusions reached
-- **Skills** — multi-step procedures (if 5+ tool calls in session)
-- **Resolved memories** — completed tasks and confirmed facts
-
-</details>
-
-<details>
-<summary><strong>Soul & Graduation</strong> — earned identity, not assigned</summary>
-
-The agent earns an identity document through accumulated experience. Graduation requires **all 7 thresholds met** AND a **quality score >= 0.6**:
-
-| Signal | Threshold |
-|--------|-----------|
-| Sessions completed | 15 |
-| Reflections stored | 10 |
-| Causal chains traced | 5 |
-| Concepts extracted | 30 |
-| Memory compactions | 5 |
-| Monologue traces | 5 |
-| Time span | 3 days |
-
-**Quality scoring** from 4 real performance signals: retrieval utilization (30%), skill success rate (25%), critical reflection rate (25%), tool failure rate (20%).
-
-**Maturity stages:** nascent (0-3/7) → developing (4/7) → emerging (5/7) → maturing (6/7) → ready (7/7 + quality gate). The agent and user are notified at each stage transition.
-
-**Soul evolution:** Every 10 sessions after graduation, the soul is re-evaluated against new experience and revised if the agent has meaningfully changed.
-
-**Soul document structure:** Working style, self-observations, earned values (grounded in specific evidence), revision history. Seeded as Tier 0 core memory — loaded every single turn.
-
-</details>
-
-<details>
-<summary><strong>Reflection System</strong> — metacognitive self-correction</summary>
-
-Triggers at session end when metrics indicate problems:
-
-| Condition | Threshold |
-|-----------|-----------|
-| Retrieval utilization | < 20% average |
-| Tool failure rate | > 20% |
-| Steering candidates | any detected |
-| Context waste | > 0.5% of context window |
-
-Opus generates a 2-4 sentence reflection: root cause, error pattern, what to do differently. Stored with importance 7.0, deduped at 0.85 cosine similarity.
+- **Causal chains**: trigger/outcome sequences with success/confidence
+- **Monologue traces**: thinking blocks that reveal problem-solving approach
+- **Concepts**: semantic nodes (architecture patterns, domain terms)
+- **Corrections**: user-provided fixes (importance: 9)
+- **Preferences**: behavioral rules learned from feedback
+- **Artifacts**: file paths created or modified
+- **Decisions**: important conclusions reached
+- **Skills**: multi-step procedures (if 5+ tool calls in session)
+- **Resolved memories**: completed tasks and confirmed facts
 
 </details>
 
@@ -336,25 +340,11 @@ Opus generates a 2-4 sentence reflection: root cause, error pattern, what to do 
 
 Three tools are registered for the LLM:
 
-- **`recall`** — Search graph memory by query
-- **`core_memory`** — Read/write persistent core directives (tiered: always-loaded vs session-pinned)
-- **`introspect`** — Inspect database state, verify memory counts, run diagnostics, check graduation status, migrate workspace files
+- **`recall`**: Search graph memory by query
+- **`core_memory`**: Read/write persistent core directives (tiered: always-loaded vs session-pinned)
+- **`introspect`**: Inspect database state, verify memory counts, run diagnostics, check graduation status, migrate workspace files
 
 ---
-
-## From Source
-
-If you want to install from a local checkout instead of npm:
-
-```bash
-git clone https://github.com/42U/kongbrain.git
-cd kongbrain
-pnpm install
-pnpm build
-openclaw plugins link .
-```
-
-Then activate it the same way — set `"contextEngine": "kongbrain"` in your OpenClaw config.
 
 ## Development
 
@@ -363,20 +353,16 @@ git clone https://github.com/42U/kongbrain.git
 cd kongbrain
 pnpm install
 pnpm build
-```
-
-Run tests:
-
-```bash
 pnpm test
 ```
 
-Run OpenClaw against your local build:
+Link your local build to OpenClaw:
 
 ```bash
-openclaw plugins link .
-openclaw
+openclaw plugins install . --link
 ```
+
+Then set `plugins.slots.contextEngine` to `"kongbrain"` in `~/.openclaw/openclaw.json` and run `openclaw`.
 
 ## Contributing
 
