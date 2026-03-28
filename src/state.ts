@@ -66,12 +66,16 @@ export class SessionState {
 
 // --- Global plugin state (shared across all sessions) ---
 
+/** Function to enqueue a system event visible to the user. */
+export type EnqueueSystemEventFn = (text: string, options: { sessionKey: string }) => boolean;
+
 export class GlobalPluginState {
   readonly config: KongBrainConfig;
   readonly store: SurrealStore;
   readonly embeddings: EmbeddingService;
   readonly complete: CompleteFn;
   workspaceDir?: string;
+  enqueueSystemEvent?: EnqueueSystemEventFn;
   private sessions = new Map<string, SessionState>();
 
   constructor(

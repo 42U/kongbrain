@@ -7,6 +7,7 @@ import { Type } from "@sinclair/typebox";
 import type { GlobalPluginState, SessionState } from "../state.js";
 import { assertRecordId } from "../surreal.js";
 import { migrateWorkspace } from "../workspace-migrate.js";
+import { checkGraduation, formatGraduationReport, hasSoul } from "../soul.js";
 
 const ALLOWED_TABLES = new Set([
   "agent", "project", "task", "artifact", "concept",
@@ -14,7 +15,7 @@ const ALLOWED_TABLES = new Set([
   "core_memory", "monologue", "skill", "reflection",
   "retrieval_outcome", "orchestrator_metrics",
   "causal_chain", "compaction_checkpoint", "subagent",
-  "memory_utility_cache",
+  "memory_utility_cache", "soul", "graduation_event", "maturity_stage",
 ]);
 
 const VECTOR_TABLES = new Set([
@@ -146,6 +147,22 @@ async function statusAction(store: any, sessionId: string) {
   lines.push("");
   lines.push(`Total records:     ${totalNodes}`);
   lines.push(`Total embeddings:  ${totalEmb}`);
+
+  // Graduation status
+  lines.push("");
+  lines.push("SOUL GRADUATION");
+  lines.push("═══════════════════════════════════");
+  try {
+    const soulExists = await hasSoul(store);
+    if (soulExists) {
+      lines.push("Status: GRADUATED (soul document exists)");
+    } else {
+      const report = await checkGraduation(store);
+      lines.push(formatGraduationReport(report));
+    }
+  } catch {
+    lines.push("Status: Unable to check graduation");
+  }
 
   return {
     content: [{ type: "text" as const, text: lines.join("\n") }],

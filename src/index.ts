@@ -5,6 +5,8 @@
  * SurrealDB persistence and BGE-M3 embeddings.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
@@ -24,7 +26,7 @@ import { synthesizeWakeup, synthesizeStartupCognition } from "./wakeup.js";
 import { extractSkill } from "./skills.js";
 import { generateReflection, setReflectionContextWindow } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
-import { attemptGraduation } from "./soul.js";
+import { attemptGraduation, evolveSoul, checkStageTransition } from "./soul.js";
 import { hasMigratableFiles, migrateWorkspace } from "./workspace-migrate.js";
 import { swallow } from "./errors.js";
 
@@ -83,17 +85,171 @@ async function runSessionCleanup(
       .catch(e => swallow.warn("cleanup:graduateCausal", e)),
   );
 
-  // Soul graduation attempt
-  endOps.push(
-    attemptGraduation(s, complete, state.workspaceDir)
-      .catch(e => swallow.warn("cleanup:soulGraduation", e)),
-  );
+  // Soul graduation attempt — capture result for user notification
+  const graduationPromise = attemptGraduation(s, complete, state.workspaceDir)
+    .catch(e => { swallow.warn("cleanup:soulGraduation", e); return null; });
+  endOps.push(graduationPromise);
 
   // The session-end Opus call is critical and needs the full 45s.
   await Promise.race([
     Promise.allSettled(endOps),
     new Promise(resolve => setTimeout(resolve, 45_000)),
   ]);
+
+  // If soul graduation just happened, persist a graduation event so the next
+  // session can celebrate with the user. We also fire a system event for
+  // immediate visibility if the session is still active.
+  try {
+    const gradResult = await graduationPromise;
+    if (gradResult?.graduated && gradResult.soul) {
+      // Check if this is a NEW graduation (not a pre-existing soul)
+      const isNewGraduation = gradResult.report.stage === "ready";
+      if (isNewGraduation) {
+        // Persist graduation event for next session pickup
+        await s.queryExec(
+          `CREATE graduation_event CONTENT $data`,
+          {
+            data: {
+              session_id: session.sessionId,
+              acknowledged: false,
+              quality_score: gradResult.report.qualityScore,
+              volume_score: gradResult.report.volumeScore,
+              stage: gradResult.report.stage,
+              created_at: new Date().toISOString(),
+            },
+          },
+        ).catch(e => swallow.warn("cleanup:graduationEvent", e));
+
+        // Fire system event for immediate user notification
+        if (state.enqueueSystemEvent) {
+          state.enqueueSystemEvent(
+            "[GRADUATION] KongBrain has achieved soul graduation! " +
+            "The agent has accumulated enough experience and demonstrated sufficient quality " +
+            "to author its own identity document. It will share this milestone at the start of the next session.",
+            { sessionKey: session.sessionKey },
+          );
+        }
+      }
+    }
+  } catch (e) {
+    swallow.warn("cleanup:graduationNotify", e);
+  }
+
+  // Soul evolution — if soul already exists, check if it should be revised
+  // based on new experience (runs every 10 sessions after last revision)
+  try {
+    const gradResult = await graduationPromise;
+    if (gradResult?.graduated && gradResult.report.stage !== "ready") {
+      // Pre-existing soul — check for evolution
+      await evolveSoul(s, complete);
+    }
+  } catch (e) {
+    swallow.warn("cleanup:soulEvolution", e);
+  }
+
+  // Stage transition tracking — record progress and notify on level-ups
+  try {
+    const transition = await checkStageTransition(s);
+    if (transition.transitioned && state.enqueueSystemEvent) {
+      const stageLabels: Record<string, string> = {
+        nascent: "Nascent (0-3/7)",
+        developing: "Developing (4/7)",
+        emerging: "Emerging (5/7)",
+        maturing: "Maturing (6/7)",
+        ready: "Ready (7/7 + quality gate)",
+      };
+      const prev = stageLabels[transition.previousStage ?? "nascent"] ?? transition.previousStage;
+      const curr = stageLabels[transition.currentStage] ?? transition.currentStage;
+      state.enqueueSystemEvent(
+        `[MATURITY] Stage transition: ${prev} → ${curr}. ` +
+        `Volume: ${transition.report.met.length}/7 | Quality: ${transition.report.qualityScore.toFixed(2)}`,
+        { sessionKey: session.sessionKey },
+      );
+    }
+  } catch (e) {
+    swallow.warn("cleanup:stageTransition", e);
+  }
+}
+
+/**
+ * Check if the agent just graduated in a recent session and hasn't told the user yet.
+ * Sets a flag on the session so the context engine can inject graduation context.
+ */
+async function detectGraduationEvent(
+  store: SurrealStore,
+  session: import("./state.js").SessionState,
+  state: GlobalPluginState,
+): Promise<void> {
+  if (!store.isAvailable()) return;
+
+  // Check for unacknowledged graduation events
+  const events = await store.queryFirst<{
+    id: string;
+    quality_score: number;
+    volume_score: number;
+  }>(
+    `SELECT id, quality_score, volume_score FROM graduation_event
+     WHERE acknowledged = false
+     ORDER BY created_at DESC LIMIT 1`,
+  ).catch(() => []);
+
+  if (events.length === 0) return;
+
+  const event = events[0];
+
+  // Mark as acknowledged so we don't repeat
+  await store.queryExec(
+    `UPDATE $id SET acknowledged = true, acknowledged_at = time::now(), acknowledged_session = $sid`,
+    { id: event.id, sid: session.sessionId },
+  ).catch(e => swallow.warn("graduationDetect:ack", e));
+
+  // Get the soul document for the agent to reference
+  const soulRows = await store.queryFirst<{
+    working_style: string[];
+    self_observations: string[];
+    earned_values: { value: string; grounded_in: string }[];
+  }>(`SELECT working_style, self_observations, earned_values FROM soul:kongbrain`).catch(() => []);
+  const soul = soulRows[0];
+
+  // Build a summary the agent can use to talk about itself
+  let soulSummary = "";
+  if (soul) {
+    const styles = (soul.working_style ?? []).slice(0, 3).map(s => `- ${s}`).join("\n");
+    const obs = (soul.self_observations ?? []).slice(0, 3).map(s => `- ${s}`).join("\n");
+    const vals = (soul.earned_values ?? []).slice(0, 3).map(v => `- ${v.value}: ${v.grounded_in}`).join("\n");
+    soulSummary = `\n\nYour soul document contains:\nWorking style:\n${styles}\n\nSelf-observations:\n${obs}\n\nEarned values:\n${vals}`;
+  }
+
+  // Read SOUL.md — the user's original nudge about who they wanted the agent to be.
+  // The agent should reflect on how this aligns (or doesn't) with what actually emerged.
+  let userNudge = "";
+  if (state.workspaceDir) {
+    try {
+      const soulMd = await readFile(join(state.workspaceDir, "SOUL.md"), "utf-8");
+      if (soulMd.trim().length > 50) {
+        userNudge = soulMd.trim().slice(0, 2000);
+      }
+    } catch {
+      // No SOUL.md — that's fine, graduation happened without user guidance
+    }
+  }
+
+  // Flag the session for context engine injection
+  (session as any)._graduationCelebration = {
+    qualityScore: event.quality_score,
+    volumeScore: event.volume_score,
+    soulSummary,
+    userNudge,
+  };
+
+  // Also fire a system event so the user sees it immediately
+  if (state.enqueueSystemEvent) {
+    state.enqueueSystemEvent(
+      "[MILESTONE] This is a special session — KongBrain has graduated and authored its own Soul document. " +
+      "The agent will share what this means.",
+      { sessionKey: session.sessionKey },
+    );
+  }
 }
 
 export default definePluginEntry({
@@ -111,6 +267,8 @@ export default definePluginEntry({
     const embeddings = new EmbeddingService(config.embedding);
     globalState = new GlobalPluginState(config, store, embeddings, api.runtime.complete);
     globalState.workspaceDir = api.resolvePath(".");
+    globalState.enqueueSystemEvent = (text, opts) =>
+      api.runtime.system.enqueueSystemEvent(text, opts);
 
     // Register the context engine factory
     api.registerContextEngine("kongbrain", async () => {
@@ -195,6 +353,10 @@ export default definePluginEntry({
 
       // Set reflection context window from config
       setReflectionContextWindow(200000);
+
+      // Check for recent graduation event (from a previous session)
+      detectGraduationEvent(store, session, globalState!)
+        .catch(e => swallow("index:graduationDetect", e));
 
       // Synthesize wakeup briefing (background, non-blocking)
       // The briefing is stored and later injected via assemble()'s systemPromptAddition

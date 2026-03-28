@@ -519,8 +519,9 @@ async function formatContextMessage(
     (groups[key] ??= []).push(n);
   }
 
-  const ORDER = ["memory", "concept", "causal", "skill", "past_turns"];
+  const ORDER = ["identity_chunk", "memory", "concept", "causal", "skill", "past_turns"];
   const LABELS: Record<string, string> = {
+    identity_chunk: "Identity (self-knowledge)",
     memory: "Recalled Memories",
     concept: "Relevant Concepts",
     causal: "Causal Chains",
@@ -529,6 +530,24 @@ async function formatContextMessage(
   };
 
   const sections: string[] = [];
+
+  // Pillar context — structural awareness of who/what/where
+  const pillarLines: string[] = [];
+  if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
+  if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
+  if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
+  if (pillarLines.length > 0) {
+    sections.push(
+      "GRAPH PILLARS (your structural context):\n" +
+      `  ${pillarLines.join(" | ")}\n` +
+      "  IKONG cognitive architecture:\n" +
+      "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
+      "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
+      "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
+      "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
+      "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
+    );
+  }
 
   const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
   if (t0Section) sections.push(t0Section);

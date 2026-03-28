@@ -363,3 +363,22 @@ DEFINE FIELD IF NOT EXISTS earned_values ON soul TYPE array<object>;
 DEFINE FIELD IF NOT EXISTS revisions ON soul TYPE array<object> DEFAULT [];
 DEFINE FIELD IF NOT EXISTS created_at ON soul TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated_at ON soul TYPE datetime DEFAULT time::now();
+
+-- Maturity stage: tracks stage transitions for progress notifications
+DEFINE TABLE IF NOT EXISTS maturity_stage SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS stage ON maturity_stage TYPE string;
+DEFINE FIELD IF NOT EXISTS volume_score ON maturity_stage TYPE float;
+DEFINE FIELD IF NOT EXISTS quality_score ON maturity_stage TYPE float;
+DEFINE FIELD IF NOT EXISTS met_count ON maturity_stage TYPE int;
+DEFINE FIELD IF NOT EXISTS created_at ON maturity_stage TYPE datetime DEFAULT time::now();
+
+-- Graduation events: tracks when soul graduation occurred for user notification
+DEFINE TABLE IF NOT EXISTS graduation_event SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS session_id ON graduation_event TYPE string;
+DEFINE FIELD IF NOT EXISTS acknowledged ON graduation_event TYPE bool DEFAULT false;
+DEFINE FIELD IF NOT EXISTS acknowledged_at ON graduation_event TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS acknowledged_session ON graduation_event TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS quality_score ON graduation_event TYPE float;
+DEFINE FIELD IF NOT EXISTS volume_score ON graduation_event TYPE float;
+DEFINE FIELD IF NOT EXISTS stage ON graduation_event TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at ON graduation_event TYPE datetime DEFAULT time::now();

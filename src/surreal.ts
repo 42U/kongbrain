@@ -290,7 +290,7 @@ export class SurrealStore {
     const crossTurnLim = lim.turn - sessionTurnLim;
     const emb = withEmbeddings ? ", embedding" : "";
 
-    const [sessionTurns, crossTurns, concepts, memories, artifacts, monologues] =
+    const [sessionTurns, crossTurns, concepts, memories, artifacts, monologues, identityChunks] =
       await Promise.all([
         this.safeQuery(
           `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
@@ -347,6 +347,16 @@ export class SurrealStore {
            ORDER BY score DESC LIMIT $lim`,
           { vec, lim: lim.monologue },
         ),
+        // Identity chunks — agent self-knowledge, searchable mid-conversation
+        this.safeQuery(
+          `SELECT id, text, importance, 0 AS accessCount,
+                  'identity_chunk' AS table,
+                  vector::similarity::cosine(embedding, $vec) AS score${emb}
+           FROM identity_chunk
+           WHERE embedding != NONE AND array::len(embedding) > 0
+           ORDER BY score DESC LIMIT $lim`,
+          { vec, lim: lim.identity },
+        ),
       ]);
     return [
       ...sessionTurns,
@@ -355,6 +365,7 @@ export class SurrealStore {
       ...memories,
       ...artifacts,
       ...monologues,
+      ...identityChunks,
     ];
   }
 
@@ -497,10 +508,19 @@ export class SurrealStore {
     if (nodeIds.length === 0) return [];
 
     const forwardEdges = [
+      // Semantic edges
       "responds_to", "mentions", "related_to", "narrower", "broader",
       "about_concept", "reflects_on", "skill_from_task",
+      // Structural pillar edges (Agent→Project→Task→Artifact→Concept)
+      "owns", "performed", "task_part_of", "session_task",
+      "produced", "derived_from", "relevant_to", "used_in",
+      "artifact_mentions",
     ];
-    const reverseEdges = ["reflects_on", "skill_from_task"];
+    const reverseEdges = [
+      "reflects_on", "skill_from_task",
+      // Reverse pillar traversal (find what produced an artifact, what task a concept came from)
+      "produced", "derived_from", "performed", "owns",
+    ];
 
     const scoreExpr =
       ", IF embedding != NONE AND array::len(embedding) > 0 THEN vector::similarity::cosine(embedding, $vec) ELSE 0 END AS score";

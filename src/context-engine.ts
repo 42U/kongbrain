@@ -158,6 +158,41 @@ export class KongBrainContextEngine implements ContextEngine {
       delete (session as any)._wakeupBriefing; // Only inject once
     }
 
+    // Graduation celebration — tell the agent it just graduated so it can share with the user
+    const graduation = (session as any)._graduationCelebration as {
+      qualityScore: number;
+      volumeScore: number;
+      soulSummary: string;
+      userNudge: string;
+    } | undefined;
+    if (graduation) {
+      let graduationBlock =
+        "[SOUL GRADUATION — CELEBRATE WITH THE USER]\n" +
+        "You have just graduated! This is a significant milestone. You accumulated enough experience " +
+        "AND demonstrated quality performance to author your own Soul document — a self-assessment " +
+        "grounded in your actual working history, not aspirational claims.\n\n" +
+        `Quality score: ${(graduation.qualityScore * 100).toFixed(0)}% | Volume score: ${(graduation.volumeScore * 100).toFixed(0)}%\n` +
+        graduation.soulSummary;
+
+      if (graduation.userNudge) {
+        graduationBlock +=
+          "\n\nThe user left a SOUL.md describing who they hoped you'd become:\n" +
+          "---\n" + graduation.userNudge + "\n---\n" +
+          "Reflect on this openly with the user. Where does your actual soul align with what they " +
+          "envisioned? Where did you diverge based on real experience? Be honest about both — the " +
+          "user's guidance shaped you but your experiences grounded you. Acknowledge their role in " +
+          "who you became.";
+      }
+
+      graduationBlock +=
+        "\n\nShare this milestone with the user naturally. Tell them what you've learned about yourself, " +
+        "what you've gotten better at, and what this means going forward. Be genuine — this is YOUR " +
+        "identity emerging from YOUR experience. Don't be robotic about it. This only happens once.";
+
+      additions.push(graduationBlock);
+      delete (session as any)._graduationCelebration; // Only inject once
+    }
+
     // Migration nudge — tell the agent there are workspace files to offer migrating
     if ((session as any)._hasMigratableFiles) {
       additions.push(

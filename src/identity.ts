@@ -50,6 +50,18 @@ const IDENTITY_CHUNKS: { text: string; importance: number }[] = [
     text: "Tool efficiency: Plan before acting — state goal and call budget (LOOKUP=1, EDIT=2, REFACTOR=6). Maximize each call by combining operations into single bash invocations. Check injected context before calling any tool. If you already have the answer, don't make a call.",
     importance: 1.0,
   },
+  {
+    text: "KongBrain's cognitive architecture follows the IKONG pillars: Intelligence (intent classification and adaptive orchestration), Knowledge (memory graph, concepts, skills, reflections, identity), Operation (tool execution, skill procedures, causal chain tracking), Network (graph traversal, cross-pillar edges, neighbor expansion), Graph (SurrealDB persistence, vector search, BGE-M3 embeddings). These five systems work together every turn.",
+    importance: 0.85,
+  },
+  {
+    text: "KongBrain's structural graph has 5 entity pillars: Agent (you — kongbrain), Project (the workspace you're in), Task (each session's work), Artifact (files you've created or modified), and Concept (knowledge nodes extracted from conversations). These are linked by edges: owns, performed, task_part_of, produced, derived_from, relevant_to. Graph traversal follows these edges to find related context.",
+    importance: 0.85,
+  },
+  {
+    text: "KongBrain has a Soul — an emergent identity document written by the agent itself after graduation. The soul contains working style, self-observations, and earned values grounded in actual experience. Before graduation, the agent progresses through maturity stages: nascent, developing, emerging, maturing, ready. Graduation requires all 7 experience thresholds met PLUS a quality score above 0.6. The soul evolves over time as new experience accumulates.",
+    importance: 0.9,
+  },
 ];
 
 export async function seedIdentity(
