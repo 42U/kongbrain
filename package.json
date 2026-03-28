@@ -1,0 +1,24 @@
+{
+  "name": "@openclaw/kongbrain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "dependencies": {
+    "surrealdb": "^2.0.3",
+    "node-llama-cpp": "^3.18.1",
+    "@sinclair/typebox": "0.34.48"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.22",
+    "@mariozechner/pi-ai": ">=1.0.0",
+    "@mariozechner/pi-agent-core": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": { "optional": true },
+    "@mariozechner/pi-ai": { "optional": true },
+    "@mariozechner/pi-agent-core": { "optional": true }
+  }
+}

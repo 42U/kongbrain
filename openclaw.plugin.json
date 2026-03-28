@@ -1,0 +1,66 @@
+{
+  "id": "kongbrain",
+  "name": "KongBrain",
+  "description": "Graph-backed cognitive context engine with SurrealDB + BGE-M3",
+  "kind": "context-engine",
+  "uiHints": {
+    "surreal.url": {
+      "label": "SurrealDB URL",
+      "placeholder": "ws://localhost:8042/rpc",
+      "help": "WebSocket URL for SurrealDB (with /rpc path)"
+    },
+    "surreal.user": {
+      "label": "SurrealDB User",
+      "placeholder": "root"
+    },
+    "surreal.pass": {
+      "label": "SurrealDB Password",
+      "sensitive": true,
+      "placeholder": "root"
+    },
+    "surreal.ns": {
+      "label": "SurrealDB Namespace",
+      "placeholder": "kong"
+    },
+    "surreal.db": {
+      "label": "SurrealDB Database",
+      "placeholder": "memory"
+    },
+    "embedding.modelPath": {
+      "label": "Embedding Model Path",
+      "placeholder": "~/.node-llama-cpp/models/bge-m3-q4_k_m.gguf",
+      "help": "Path to BGE-M3 GGUF model file (~420MB, auto-downloaded if missing)",
+      "advanced": true
+    },
+    "embedding.dimensions": {
+      "label": "Embedding Dimensions",
+      "placeholder": "1024",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "surreal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string" },
+          "user": { "type": "string" },
+          "pass": { "type": "string" },
+          "ns": { "type": "string" },
+          "db": { "type": "string" }
+        }
+      },
+      "embedding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPath": { "type": "string" },
+          "dimensions": { "type": "number" }
+        }
+      }
+    }
+  }
+}
