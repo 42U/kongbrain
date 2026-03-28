@@ -65,7 +65,7 @@ docker run -d --name surrealdb -p 8042:8000 \
 ### 3. Install KongBrain
 
 ```bash
-openclaw plugins install @openclaw/kongbrain
+openclaw plugins install kongbrain
 ```
 
 ### 4. Activate

@@ -1,8 +1,30 @@
 {
-  "name": "@openclaw/kongbrain",
+  "name": "kongbrain",
   "version": "0.1.0",
+  "description": "Graph-backed persistent memory engine for OpenClaw. Replaces the default context window with SurrealDB + vector embeddings that learn across sessions.",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/42U/kongbrain.git"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "context-engine",
+    "memory",
+    "persistent-memory",
+    "graph-database",
+    "surrealdb",
+    "vector-search",
+    "embeddings",
+    "bge-m3",
+    "ai-agent",
+    "cognitive-architecture",
+    "knowledge-graph",
+    "llm"
+  ],
   "openclaw": {
     "extensions": [
       "./src/index.ts"

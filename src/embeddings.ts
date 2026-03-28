@@ -1,12 +1,11 @@
 import { existsSync } from "node:fs";
-import {
-  getLlama,
-  LlamaLogLevel,
-  type LlamaEmbeddingContext,
-  type LlamaModel,
-} from "node-llama-cpp";
 import type { EmbeddingConfig } from "./config.js";
 import { swallow } from "./errors.js";
+
+// Lazy-import node-llama-cpp to avoid top-level await issues with jiti.
+// The actual import happens inside initialize() at runtime.
+type LlamaEmbeddingContext = import("node-llama-cpp").LlamaEmbeddingContext;
+type LlamaModel = import("node-llama-cpp").LlamaModel;
 
 export class EmbeddingService {
   private model: LlamaModel | null = null;
@@ -22,6 +21,7 @@ export class EmbeddingService {
         `Embedding model not found at: ${this.config.modelPath}\n  Download BGE-M3 GGUF or set EMBED_MODEL_PATH`,
       );
     }
+    const { getLlama, LlamaLogLevel } = await import("node-llama-cpp");
     const llama = await getLlama({
       logLevel: LlamaLogLevel.error,
       logger: (level, message) => {
