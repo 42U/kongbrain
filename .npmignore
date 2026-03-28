@@ -1,0 +1,12 @@
+# Development
+.claude/
+.git/
+test/
+node_modules/
+dist/
+
+# Internal docs
+UPSTREAM-PROPOSALS.md
+
+# Lock file (consumers use their own)
+package-lock.json

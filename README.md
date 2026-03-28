@@ -152,20 +152,50 @@ Intelligence: Intent-adaptive orchestration, 6-signal retrieval quality evaluati
 
 Identity: Seeded identity chunks -> earned soul document. The soul is written BY the agent based on its own graph data once graduation thresholds are met (minimum sessions, memory count, reflection depth, skill count, causal chains).
 
+## From Source
+
+If you want to install from a local checkout instead of npm:
+
+```bash
+git clone https://github.com/42U/kongbrain.git
+cd kongbrain
+pnpm install
+pnpm build
+openclaw plugins link .
+```
+
+Then activate it the same way — set `"contextEngine": "kongbrain"` in your OpenClaw config.
+
 ## Development
 
 ```bash
-cd extensions/kongbrain
+git clone https://github.com/42U/kongbrain.git
+cd kongbrain
 pnpm install
 pnpm build
 ```
 
-Run OpenClaw with the local plugin:
+Run tests:
 
 ```bash
-cd ../..
-pnpm dev
+pnpm test
 ```
+
+Run OpenClaw against your local build:
+
+```bash
+openclaw plugins link .
+openclaw
+```
+
+## Contributing
+
+1. Clone the repo and install dependencies (`pnpm install`)
+2. Make your changes
+3. Build (`pnpm build`) and run tests (`pnpm test`)
+4. Open a PR against `master`
+
+The lobster doesn't accept contributions. The ape does.
 
 ## License
 

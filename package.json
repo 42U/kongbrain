@@ -4,21 +4,38 @@
   "private": true,
   "type": "module",
   "openclaw": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "surrealdb": "^2.0.3",
+    "@sinclair/typebox": "0.34.48",
     "node-llama-cpp": "^3.18.1",
-    "@sinclair/typebox": "0.34.48"
+    "surrealdb": "^2.0.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.22",
+    "@mariozechner/pi-agent-core": ">=1.0.0",
     "@mariozechner/pi-ai": ">=1.0.0",
-    "@mariozechner/pi-agent-core": ">=1.0.0"
+    "openclaw": ">=2026.3.22"
   },
   "peerDependenciesMeta": {
-    "openclaw": { "optional": true },
-    "@mariozechner/pi-ai": { "optional": true },
-    "@mariozechner/pi-agent-core": { "optional": true }
+    "openclaw": {
+      "optional": true
+    },
+    "@mariozechner/pi-ai": {
+      "optional": true
+    },
+    "@mariozechner/pi-agent-core": {
+      "optional": true
+    }
   }
 }
