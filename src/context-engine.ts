@@ -345,7 +345,7 @@ export class KongBrainContextEngine implements ContextEngine {
     const { store, embeddings } = this.state;
 
     // Deferred cleanup: run once on first turn when complete() is available
-    if (session.userTurnCount <= 1) {
+    if (session.userTurnCount <= 1 && typeof this.state.complete === "function") {
       runDeferredCleanup(store, embeddings, this.state.complete)
         .catch(e => swallow.warn("afterTurn:deferredCleanup", e));
     }

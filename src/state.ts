@@ -78,7 +78,7 @@ export class GlobalPluginState {
   readonly config: KongBrainConfig;
   readonly store: SurrealStore;
   readonly embeddings: EmbeddingService;
-  readonly complete: CompleteFn;
+  complete: CompleteFn;
   workspaceDir?: string;
   enqueueSystemEvent?: EnqueueSystemEventFn;
   private sessions = new Map<string, SessionState>();

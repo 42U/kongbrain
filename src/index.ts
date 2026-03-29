@@ -11,7 +11,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
 import { EmbeddingService } from "./embeddings.js";
-import { GlobalPluginState } from "./state.js";
+import { GlobalPluginState, type CompleteFn } from "./state.js";
 import { KongBrainContextEngine } from "./context-engine.js";
 import { createRecallToolDef } from "./tools/recall.js";
 import { createCoreMemoryToolDef } from "./tools/core-memory.js";
@@ -300,8 +300,16 @@ export default definePluginEntry({
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = new EmbeddingService(config.embedding);
-      // api.runtime.complete is undefined at register() time — wrap in a lazy proxy
-      const complete = (params: Parameters<typeof api.runtime.complete>[0]) => api.runtime.complete(params);
+      // api.runtime.complete is a lazy method that may not resolve until after register().
+      // Capture the api reference and dereference .runtime.complete at call time.
+      const apiRef = api;
+      const complete: CompleteFn = async (params) => {
+        const fn = apiRef.runtime?.complete;
+        if (typeof fn !== "function") {
+          throw new Error(`runtime.complete not available (type=${typeof fn})`);
+        }
+        return fn(params);
+      };
       globalState = new GlobalPluginState(config, store, embeddings, complete);
     }
     globalState.workspaceDir = api.resolvePath(".");
@@ -335,6 +343,13 @@ export default definePluginEntry({
       seedIdentity(store, embeddings)
         .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
         .catch(e => swallow.warn("factory:seedIdentity", e));
+
+      // Re-capture complete from the api that's in scope during factory execution.
+      // api.runtime.complete may not be available at register() time but is ready by
+      // the time the context engine factory is invoked.
+      if (typeof api.runtime?.complete === "function") {
+        state.complete = (params) => api.runtime.complete(params);
+      }
 
       return new KongBrainContextEngine(state);
     });
