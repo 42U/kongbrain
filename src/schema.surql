@@ -97,6 +97,8 @@ DEFINE FIELD IF NOT EXISTS last_active ON session TYPE datetime DEFAULT time::no
 DEFINE FIELD IF NOT EXISTS turn_count ON session TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS total_input_tokens ON session TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS total_output_tokens ON session TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS ended_at ON session TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS cleanup_completed ON session TYPE bool DEFAULT false;
 
 -- Long-term memory (episodic → consolidated)
 DEFINE TABLE IF NOT EXISTS memory SCHEMALESS;

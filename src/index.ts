@@ -28,11 +28,14 @@ import { generateReflection, setReflectionContextWindow } from "./reflection.js"
 import { graduateCausalToSkills } from "./skills.js";
 import { attemptGraduation, evolveSoul, checkStageTransition } from "./soul.js";
 import { hasMigratableFiles, migrateWorkspace } from "./workspace-migrate.js";
+import { writeHandoffFileSync } from "./handoff-file.js";
+import { runDeferredCleanup } from "./deferred-cleanup.js";
 import { swallow } from "./errors.js";
 
 let globalState: GlobalPluginState | null = null;
 let shutdownPromise: Promise<void> | null = null;
 let registeredExitHandler: (() => void) | null = null;
+let registeredSyncExitHandler: (() => void) | null = null;
 let registered = false;
 
 /**
@@ -171,6 +174,33 @@ async function runSessionCleanup(
   } catch (e) {
     swallow.warn("cleanup:stageTransition", e);
   }
+
+  // Generate handoff note for next session wakeup
+  try {
+    const recentTurns = await s.getSessionTurns(session.sessionId, 15)
+      .catch(() => [] as { role: string; text: string }[]);
+    if (recentTurns.length >= 2) {
+      const turnSummary = recentTurns
+        .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)
+        .join("\n");
+
+      const handoffResponse = await complete({
+        system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
+        messages: [{ role: "user", content: turnSummary }],
+      });
+
+      const handoffText = handoffResponse.text.trim();
+      if (handoffText.length > 20) {
+        let embedding: number[] | null = null;
+        if (emb.isAvailable()) {
+          try { embedding = await emb.embed(handoffText); } catch { /* ok */ }
+        }
+        await s.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
+      }
+    }
+  } catch (e) {
+    swallow.warn("cleanup:handoff", e);
+  }
 }
 
 /**
@@ -264,16 +294,24 @@ export default definePluginEntry({
     const config = parsePluginConfig(api.pluginConfig as Record<string, unknown> | undefined);
     const logger = api.logger;
 
-    // Initialize shared resources
-    const store = new SurrealStore(config.surreal);
-    const embeddings = new EmbeddingService(config.embedding);
-    globalState = new GlobalPluginState(config, store, embeddings, api.runtime.complete);
+    // Initialize shared resources — reuse existing globalState if register() is called
+    // multiple times (OpenClaw may invoke the factory more than once). Hooks from the
+    // first register() hold a closure over globalState, so replacing it would orphan them.
+    if (!globalState) {
+      const store = new SurrealStore(config.surreal);
+      const embeddings = new EmbeddingService(config.embedding);
+      globalState = new GlobalPluginState(config, store, embeddings, api.runtime.complete);
+    }
     globalState.workspaceDir = api.resolvePath(".");
     globalState.enqueueSystemEvent = (text, opts) =>
       api.runtime.system.enqueueSystemEvent(text, opts);
 
+    const state = globalState;
+
     // Register the context engine factory
     api.registerContextEngine("kongbrain", async () => {
+      const { store, embeddings } = state;
+
       // Connect to SurrealDB
       try {
         await store.initialize();
@@ -296,7 +334,7 @@ export default definePluginEntry({
         .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
         .catch(e => swallow.warn("factory:seedIdentity", e));
 
-      return new KongBrainContextEngine(globalState!);
+      return new KongBrainContextEngine(state);
     });
 
     // ── Hook handlers ──────────────────────────────────────────────────
@@ -363,7 +401,7 @@ export default definePluginEntry({
 
       // Synthesize wakeup briefing (background, non-blocking)
       // The briefing is stored and later injected via assemble()'s systemPromptAddition
-      synthesizeWakeup(store, globalState!.complete, session.sessionId)
+      synthesizeWakeup(store, globalState!.complete, session.sessionId, globalState!.workspaceDir)
         .then(briefing => {
           if (briefing) (session as any)._wakeupBriefing = briefing;
         })
@@ -375,6 +413,11 @@ export default definePluginEntry({
           if (cognition) (session as any)._startupCognition = cognition;
         })
         .catch(e => swallow.warn("index:startupCognition", e));
+
+      // Deferred cleanup: extract knowledge from orphaned sessions (background)
+      runDeferredCleanup(store, embeddings, globalState!.complete)
+        .then(n => { if (n > 0) logger.info(`Deferred cleanup: processed ${n} orphaned session(s)`); })
+        .catch(e => swallow.warn("index:deferredCleanup", e));
     });
 
     api.on("session_end", async (event) => {
@@ -387,20 +430,49 @@ export default definePluginEntry({
       await shutdownPromise;
       shutdownPromise = null;
 
+      session.cleanedUp = true;
+      if (session.surrealSessionId) {
+        await store.markSessionEnded(session.surrealSessionId)
+          .catch(e => swallow.warn("session_end:markEnded", e));
+      }
+
       globalState.removeSession(sessionKey);
     });
 
-    // OpenClaw's session_end is fire-and-forget and doesn't fire on CLI exit.
-    // Register a process exit handler to ensure the critical extraction
-    // completes even when the user exits with Ctrl+D or /exit.
-    // Clean up previous listeners first (register() can be called multiple times).
+    // -- Exit handlers --
+    // OpenClaw TUI calls process.exit(0) on Ctrl+C×2 with no async window.
+    // We use two layers:
+    //   1. process.on("exit") — SYNC: writes handoff file to disk
+    //   2. SIGTERM — async cleanup for non-TUI modes (gateway, daemon)
+    // We do NOT register SIGINT — TUI owns that signal and always wins the race.
+
+    // Clean up previous listeners (register() can be called multiple times)
     if (registeredExitHandler) {
-      process.removeListener("beforeExit", registeredExitHandler);
-      process.removeListener("SIGINT", registeredExitHandler);
       process.removeListener("SIGTERM", registeredExitHandler);
     }
+    if (registeredSyncExitHandler) {
+      process.removeListener("exit", registeredSyncExitHandler);
+    }
 
-    const onProcessExit = () => {
+    // Sync exit handler: writes handoff file for all uncleaned sessions
+    const syncExitHandler = () => {
+      if (!globalState?.workspaceDir) return;
+      const sessions = [...(globalState as any).sessions.values()] as import("./state.js").SessionState[];
+      for (const session of sessions) {
+        if (session.cleanedUp) continue;
+        writeHandoffFileSync({
+          sessionId: session.sessionId,
+          timestamp: new Date().toISOString(),
+          userTurnCount: session.userTurnCount,
+          lastUserText: session.lastUserText.slice(0, 500),
+          lastAssistantText: session.lastAssistantText.slice(0, 500),
+          unextractedTokens: session.newContentTokens,
+        }, globalState!.workspaceDir!);
+      }
+    };
+
+    // Async exit handler: full cleanup for SIGTERM (gateway/daemon mode)
+    const asyncExitHandler = () => {
       if (!globalState) return;
       const sessions = [...(globalState as any).sessions.values()] as import("./state.js").SessionState[];
       if (sessions.length === 0 && !shutdownPromise) return;
@@ -415,10 +487,10 @@ export default definePluginEntry({
       done.then(() => process.exit(0)).catch(() => process.exit(1));
     };
 
-    registeredExitHandler = onProcessExit;
-    process.once("beforeExit", onProcessExit);
-    process.once("SIGINT", onProcessExit);
-    process.once("SIGTERM", onProcessExit);
+    registeredSyncExitHandler = syncExitHandler;
+    registeredExitHandler = asyncExitHandler;
+    process.on("exit", syncExitHandler);
+    process.once("SIGTERM", asyncExitHandler);
 
     if (!registered) {
       logger.info("KongBrain plugin registered");

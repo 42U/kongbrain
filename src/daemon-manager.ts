@@ -1,19 +1,17 @@
 /**
- * Daemon Manager — spawns and manages the memory daemon worker thread.
+ * Daemon Manager — runs memory extraction in-process.
  *
- * Provides a clean interface for sending turn batches, querying status,
- * and graceful shutdown. Used by the session lifecycle hooks.
- *
- * Ported from kongbrain — takes config as params instead of env globals.
+ * Originally used a Worker thread, but OpenClaw loads plugins via jiti
+ * (TypeScript only, no compiled JS), and Node's Worker constructor requires
+ * .js files. Refactored to run extraction async in the main thread.
+ * The extraction is I/O-bound (LLM calls + DB writes), not CPU-bound,
+ * so in-process execution is fine.
  */
-import { Worker } from "node:worker_threads";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { SurrealConfig, EmbeddingConfig } from "./config.js";
-import type { DaemonMessage, DaemonResponse, DaemonWorkerData, TurnData, PriorExtractions } from "./daemon-types.js";
+import type { TurnData, PriorExtractions } from "./daemon-types.js";
+import { SurrealStore } from "./surreal.js";
+import { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export type { TurnData } from "./daemon-types.js";
 
@@ -25,11 +23,11 @@ export interface MemoryDaemon {
     retrievedMemories: { id: string; text: string }[],
     priorExtractions?: PriorExtractions,
   ): void;
-  /** Request current daemon status (async, waits for response). */
-  getStatus(): Promise<DaemonResponse & { type: "status" }>;
-  /** Graceful shutdown: waits for current extraction, then terminates. */
+  /** Request current daemon status. */
+  getStatus(): Promise<{ type: "status"; extractedTurns: number; pendingBatches: number; errors: number }>;
+  /** Graceful shutdown: waits for current extraction, then cleans up. */
   shutdown(timeoutMs?: number): Promise<void>;
-  /** Synchronous: how many turns has the daemon already extracted? */
+  /** How many turns has the daemon already extracted? */
   getExtractedTurnCount(): number;
 }
 
@@ -39,106 +37,192 @@ export function startMemoryDaemon(
   sessionId: string,
   llmConfig?: { provider?: string; model?: string },
 ): MemoryDaemon {
-  const workerData: DaemonWorkerData = {
-    surrealConfig,
-    embeddingConfig,
-    sessionId,
-    llmProvider: llmConfig?.provider,
-    llmModel: llmConfig?.model,
+  // Daemon-local DB and embedding instances (separate connections)
+  let store: SurrealStore | null = null;
+  let embeddings: EmbeddingService | null = null;
+  let initialized = false;
+  let initFailed = false;
+  let processing = false;
+  let shuttingDown = false;
+  let extractedTurnCount = 0;
+  let errorCount = 0;
+
+  const priorState: PriorExtractions = {
+    conceptNames: [], artifactPaths: [], skillNames: [],
   };
 
-  const worker = new Worker(join(__dirname, "memory-daemon.js"), { workerData });
+  // Lazy init — connect on first batch, not at startup
+  async function ensureInit(): Promise<boolean> {
+    if (initialized) return true;
+    if (initFailed) return false;
+    try {
+      store = new SurrealStore(surrealConfig);
+      await store.initialize();
+      embeddings = new EmbeddingService(embeddingConfig);
+      await embeddings.initialize();
+      initialized = true;
+      return true;
+    } catch (e) {
+      swallow.warn("daemon:init", e);
+      initFailed = true;
+      return false;
+    }
+  }
 
-  let extractedTurnCount = 0;
-  let terminated = false;
+  // Import extraction logic lazily to avoid circular deps
+  async function runExtraction(
+    turns: TurnData[],
+    thinking: string[],
+    retrievedMemories: { id: string; text: string }[],
+    incomingPrior?: PriorExtractions,
+  ): Promise<void> {
+    if (!store || !embeddings) return;
+    if (turns.length < 2) return;
 
-  let pendingStatusResolve: ((resp: DaemonResponse & { type: "status" }) => void) | null = null;
+    const provider = llmConfig?.provider;
+    const modelId = llmConfig?.model;
+    if (!provider || !modelId) {
+      swallow.warn("daemon:extraction", new Error("Missing llmProvider/llmModel"));
+      return;
+    }
 
-  worker.on("message", (msg: DaemonResponse) => {
-    switch (msg.type) {
-      case "extraction_complete":
-        extractedTurnCount = msg.extractedTurnCount;
-        break;
-      case "status":
-        if (pendingStatusResolve) {
-          pendingStatusResolve(msg as DaemonResponse & { type: "status" });
-          pendingStatusResolve = null;
+    // Merge incoming prior state
+    if (incomingPrior) {
+      for (const name of incomingPrior.conceptNames) {
+        if (!priorState.conceptNames.includes(name)) priorState.conceptNames.push(name);
+      }
+      for (const path of incomingPrior.artifactPaths) {
+        if (!priorState.artifactPaths.includes(path)) priorState.artifactPaths.push(path);
+      }
+      for (const name of incomingPrior.skillNames) {
+        if (!priorState.skillNames.includes(name)) priorState.skillNames.push(name);
+      }
+    }
+
+    // Dynamically import the extraction helpers from memory-daemon
+    const { buildSystemPrompt, buildTranscript, writeExtractionResults } = await import("./memory-daemon.js");
+
+    const transcript = buildTranscript(turns);
+    const sections: string[] = [`[TRANSCRIPT]\n${transcript.slice(0, 60000)}`];
+
+    if (thinking.length > 0) {
+      sections.push(`[THINKING]\n${thinking.slice(-8).join("\n---\n").slice(0, 4000)}`);
+    }
+
+    if (retrievedMemories.length > 0) {
+      const memList = retrievedMemories.map(m => `${m.id}: ${String(m.text).slice(0, 200)}`).join("\n");
+      sections.push(`[RETRIEVED MEMORIES]\nMark any that have been fully addressed/fixed/completed.\n${memList}`);
+    }
+
+    const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
+
+    const { completeSimple, getModel } = await import("@mariozechner/pi-ai");
+    const model = (getModel as any)(provider, modelId);
+
+    const response = await completeSimple(model, {
+      systemPrompt,
+      messages: [{
+        role: "user",
+        timestamp: Date.now(),
+        content: sections.join("\n\n"),
+      }],
+    });
+
+    const responseText = response.content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+
+    let result: Record<string, any>;
+    try {
+      result = JSON.parse(jsonMatch[0]);
+    } catch {
+      try {
+        result = JSON.parse(jsonMatch[0].replace(/,\s*([}\]])/g, "$1"));
+      } catch {
+        result = {};
+        const fields = ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"];
+        for (const field of fields) {
+          const fieldMatch = jsonMatch[0].match(new RegExp(`"${field}"\\s*:\\s*(\\[[\\s\\S]*?\\])(?=\\s*[,}]\\s*"[a-z]|\\s*\\}$)`, "m"));
+          if (fieldMatch) {
+            try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
+          }
         }
-        break;
-      case "error":
-        swallow.warn("daemon-manager:worker-error", new Error(msg.message));
-        break;
+        if (Object.keys(result).length === 0) return;
+      }
     }
-  });
 
-  worker.on("error", (err) => {
-    swallow.warn("daemon-manager:worker-thread-error", err);
-  });
+    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState);
+    extractedTurnCount = turns.length;
+  }
 
-  worker.on("exit", (code) => {
-    terminated = true;
-    if (code !== 0) {
-      swallow.warn("daemon-manager:worker-exit", new Error(`Daemon exited with code ${code}`));
+  // Pending batch (only keep latest — newer batch supersedes older)
+  let pendingBatch: {
+    turns: TurnData[];
+    thinking: string[];
+    retrievedMemories: { id: string; text: string }[];
+    priorExtractions?: PriorExtractions;
+  } | null = null;
+
+  async function processPending(): Promise<void> {
+    if (processing || shuttingDown) return;
+    while (pendingBatch) {
+      processing = true;
+      const batch = pendingBatch;
+      pendingBatch = null;
+      try {
+        await runExtraction(batch.turns, batch.thinking, batch.retrievedMemories, batch.priorExtractions);
+      } catch (e) {
+        errorCount++;
+        swallow.warn("daemon:extraction", e);
+      } finally {
+        processing = false;
+      }
     }
-  });
+  }
 
   return {
     sendTurnBatch(turns, thinking, retrievedMemories, priorExtractions) {
-      if (terminated) return;
-      try {
-        worker.postMessage({
-          type: "turn_batch",
-          turns,
-          thinking,
-          retrievedMemories,
-          sessionId,
-          priorExtractions,
-        } satisfies DaemonMessage);
-      } catch (e) { swallow.warn("daemon-manager:sendBatch", e); }
+      if (shuttingDown) return;
+      pendingBatch = { turns, thinking, retrievedMemories, priorExtractions };
+      // Fire-and-forget: init if needed, then process
+      ensureInit()
+        .then(ok => { if (ok) return processPending(); })
+        .catch(e => swallow.warn("daemon:sendBatch", e));
     },
 
     async getStatus() {
-      if (terminated) return { type: "status" as const, extractedTurns: extractedTurnCount, pendingBatches: 0, errors: 0 };
-      return new Promise<DaemonResponse & { type: "status" }>((resolve) => {
-        const timer = setTimeout(() => {
-          pendingStatusResolve = null;
-          resolve({ type: "status", extractedTurns: extractedTurnCount, pendingBatches: -1, errors: -1 });
-        }, 5000);
-        pendingStatusResolve = (resp) => {
-          clearTimeout(timer);
-          resolve(resp);
-        };
-        worker.postMessage({ type: "status_request" } satisfies DaemonMessage);
-      });
+      return {
+        type: "status" as const,
+        extractedTurns: extractedTurnCount,
+        pendingBatches: pendingBatch ? 1 : 0,
+        errors: errorCount,
+      };
     },
 
     async shutdown(timeoutMs = 45_000) {
-      if (terminated) return;
-      return new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          worker.terminate().catch(() => {});
-          terminated = true;
-          resolve();
-        }, timeoutMs);
-
-        const onMessage = (msg: DaemonResponse) => {
-          if (msg.type === "shutdown_complete") {
-            clearTimeout(timer);
-            worker.removeListener("message", onMessage);
-            terminated = true;
-            resolve();
-          }
-        };
-        worker.on("message", onMessage);
-
-        try {
-          worker.postMessage({ type: "shutdown" } satisfies DaemonMessage);
-        } catch {
-          clearTimeout(timer);
-          terminated = true;
-          resolve();
-        }
-      });
+      shuttingDown = true;
+      // Wait for current extraction to finish
+      if (processing) {
+        await Promise.race([
+          new Promise<void>(resolve => {
+            const check = setInterval(() => {
+              if (!processing) { clearInterval(check); resolve(); }
+            }, 100);
+          }),
+          new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
+        ]);
+      }
+      // Clean up daemon-local connections
+      await Promise.allSettled([
+        store?.dispose(),
+        embeddings?.dispose(),
+      ]).catch(() => {});
+      store = null;
+      embeddings = null;
     },
 
     getExtractedTurnCount() {

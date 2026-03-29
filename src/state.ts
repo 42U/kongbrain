@@ -34,7 +34,11 @@ export class SessionState {
   // Memory daemon
   daemon: MemoryDaemon | null = null;
   newContentTokens = 0;
-  readonly DAEMON_TOKEN_THRESHOLD = 12000;
+  readonly DAEMON_TOKEN_THRESHOLD = 4000;
+  lastDaemonFlushTurnCount = 0;
+
+  // Cleanup tracking
+  cleanedUp = false;
 
   // Current adaptive config (set by orchestrator preflight each turn)
   currentConfig: AdaptiveConfig | null = null;
@@ -46,6 +50,7 @@ export class SessionState {
   agentId = "";
   projectId = "";
   taskId = "";
+  surrealSessionId = "";
 
   constructor(sessionId: string, sessionKey: string) {
     this.sessionId = sessionId;

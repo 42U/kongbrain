@@ -1,0 +1,55 @@
+/**
+ * Sync handoff file — last-resort session continuity bridge.
+ *
+ * When the process dies (Ctrl+C×2), there's no async cleanup window.
+ * This module writes a minimal JSON snapshot synchronously on exit
+ * so the next session's wakeup has context even before deferred
+ * extraction runs.
+ */
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+const HANDOFF_FILENAME = ".kongbrain-handoff.json";
+
+export interface HandoffFileData {
+  sessionId: string;
+  timestamp: string;
+  userTurnCount: number;
+  lastUserText: string;
+  lastAssistantText: string;
+  unextractedTokens: number;
+}
+
+/**
+ * Synchronously write a handoff file. Safe to call from process.on("exit").
+ */
+export function writeHandoffFileSync(
+  data: HandoffFileData,
+  workspaceDir: string,
+): void {
+  try {
+    const path = join(workspaceDir, HANDOFF_FILENAME);
+    writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    // Best-effort — sync exit handler, can't log async
+  }
+}
+
+/**
+ * Read and delete the handoff file. Returns null if not found.
+ */
+export function readAndDeleteHandoffFile(
+  workspaceDir: string,
+): HandoffFileData | null {
+  const path = join(workspaceDir, HANDOFF_FILENAME);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    unlinkSync(path);
+    return JSON.parse(raw) as HandoffFileData;
+  } catch {
+    // Corrupted or deleted between check and read
+    try { unlinkSync(path); } catch { /* ignore */ }
+    return null;
+  }
+}

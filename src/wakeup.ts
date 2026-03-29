@@ -13,6 +13,7 @@ import type { CompleteFn } from "./state.js";
 import type { SurrealStore } from "./surreal.js";
 import { hasSoul, getSoul, checkGraduation } from "./soul.js";
 import type { MaturityStage } from "./soul.js";
+import { readAndDeleteHandoffFile } from "./handoff-file.js";
 import { swallow } from "./errors.js";
 
 // --- Types ---
@@ -63,6 +64,7 @@ export async function synthesizeWakeup(
   store: SurrealStore,
   complete: CompleteFn,
   currentSessionId?: string,
+  workspaceDir?: string,
 ): Promise<string | null> {
   if (!store.isAvailable()) return null;
 
@@ -75,7 +77,10 @@ export async function synthesizeWakeup(
     hasSoul(store),
   ]);
 
-  if (!handoff && monologues.length === 0 && identityChunks.length === 0 && previousTurns.length === 0) return null;
+  // Check for sync handoff file (written on abrupt exit)
+  const handoffFile = workspaceDir ? readAndDeleteHandoffFile(workspaceDir) : null;
+
+  if (!handoff && !handoffFile && monologues.length === 0 && identityChunks.length === 0 && previousTurns.length === 0) return null;
 
   const sections: string[] = [];
 
@@ -98,6 +103,13 @@ export async function synthesizeWakeup(
     }
     annotation += ")";
     sections.push(`[LAST HANDOFF] ${annotation}\n${handoff.text}`);
+  } else if (handoffFile) {
+    // Fallback: sync handoff file from abrupt exit (no DB handoff note exists)
+    const lines: string[] = [];
+    lines.push(`Session ended abruptly (${handoffFile.userTurnCount} turns, ${handoffFile.unextractedTokens} unextracted tokens)`);
+    if (handoffFile.lastUserText) lines.push(`Last user message: ${handoffFile.lastUserText}`);
+    if (handoffFile.lastAssistantText) lines.push(`Last assistant message: ${handoffFile.lastAssistantText}`);
+    sections.push(`[LAST SESSION EXIT]\n${lines.join("\n")}`);
   }
 
   if (previousTurns.length > 0) {

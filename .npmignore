@@ -18,5 +18,8 @@ KongClaw.png
 # Internal docs
 UPSTREAM-PROPOSALS.md
 
+# Runtime files
+.kongbrain-handoff.json
+
 # Lock file (consumers use their own)
 package-lock.json

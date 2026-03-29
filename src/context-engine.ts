@@ -103,10 +103,13 @@ export class KongBrainContextEngine implements ContextEngine {
         .catch(e => swallow.warn("bootstrap:linkTaskToProject", e));
 
       const surrealSessionId = await store.createSession(session.agentId);
+      await store.markSessionActive(surrealSessionId)
+        .catch(e => swallow.warn("bootstrap:markActive", e));
       await store.linkSessionToTask(surrealSessionId, session.taskId)
         .catch(e => swallow.warn("bootstrap:linkSessionToTask", e));
 
-      // Update session with the DB-assigned session ID
+      // Store the DB session ID for cleanup tracking
+      session.surrealSessionId = surrealSessionId;
       session.lastUserTurnId = "";
     } catch (e) {
       swallow.error("bootstrap:5pillar", e);
@@ -248,8 +251,10 @@ export class KongBrainContextEngine implements ContextEngine {
         });
 
         if (turnId) {
-          await store.relate(turnId, "part_of", session.sessionId)
-            .catch(e => swallow.warn("ingest:relate", e));
+          if (session.surrealSessionId) {
+            await store.relate(turnId, "part_of", session.surrealSessionId)
+              .catch(e => swallow.warn("ingest:relate", e));
+          }
 
           // Link to previous user turn for responds_to edge
           if (role === "assistant" && session.lastUserTurnId) {
@@ -257,8 +262,8 @@ export class KongBrainContextEngine implements ContextEngine {
               .catch(e => swallow.warn("ingest:responds_to", e));
           }
 
-          // Extract and link concepts for user turns
-          if (role === "user" && worthEmbedding) {
+          // Extract and link concepts for both user and assistant turns
+          if (worthEmbedding) {
             extractAndLinkConcepts(turnId, text, this.state)
               .catch(e => swallow.warn("ingest:concepts", e));
           }
@@ -381,8 +386,10 @@ export class KongBrainContextEngine implements ContextEngine {
       session.newContentTokens += Math.ceil(session.lastAssistantText.length / 4);
     }
 
-    // Flush to daemon when token threshold is reached
-    if (session.daemon && session.newContentTokens >= session.DAEMON_TOKEN_THRESHOLD) {
+    // Flush to daemon when token threshold OR turn count threshold is reached
+    const tokenReady = session.newContentTokens >= session.DAEMON_TOKEN_THRESHOLD;
+    const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
+    if (session.daemon && (tokenReady || turnReady)) {
       try {
         const recentTurns = await store.getSessionTurns(session.sessionId, 20);
         const turnData = recentTurns.map(t => ({
@@ -404,6 +411,7 @@ export class KongBrainContextEngine implements ContextEngine {
         );
 
         session.newContentTokens = 0;
+        session.lastDaemonFlushTurnCount = session.userTurnCount;
         session.pendingThinking.length = 0;
       } catch (e) {
         swallow.warn("afterTurn:daemonBatch", e);

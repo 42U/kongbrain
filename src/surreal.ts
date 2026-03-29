@@ -482,6 +482,30 @@ export class SurrealStore {
     }
   }
 
+  async markSessionActive(sessionId: string): Promise<void> {
+    assertRecordId(sessionId);
+    await this.queryExec(
+      `UPDATE ${sessionId} SET cleanup_completed = false, last_active = time::now()`,
+    );
+  }
+
+  async markSessionEnded(sessionId: string): Promise<void> {
+    assertRecordId(sessionId);
+    await this.queryExec(
+      `UPDATE ${sessionId} SET ended_at = time::now(), cleanup_completed = true`,
+    );
+  }
+
+  async getOrphanedSessions(limit = 3): Promise<{ id: string; started_at: string }[]> {
+    return this.queryFirst<{ id: string; started_at: string }>(
+      `SELECT id, started_at FROM session
+       WHERE cleanup_completed != true
+         AND started_at < time::now() - 2m
+       ORDER BY started_at DESC LIMIT $lim`,
+      { lim: limit },
+    );
+  }
+
   async linkSessionToTask(sessionId: string, taskId: string): Promise<void> {
     await this.queryExec(`RELATE ${sessionId}->session_task->${taskId}`);
   }
