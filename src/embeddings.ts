@@ -15,8 +15,9 @@ export class EmbeddingService {
 
   constructor(private readonly config: EmbeddingConfig) {}
 
-  async initialize(): Promise<void> {
-    if (this.ready) return;
+  /** Initialize the embedding model. Returns true if freshly loaded, false if already ready. */
+  async initialize(): Promise<boolean> {
+    if (this.ready) return false;
     if (!existsSync(this.config.modelPath)) {
       throw new Error(
         `Embedding model not found at: ${this.config.modelPath}\n  Download BGE-M3 GGUF or set EMBED_MODEL_PATH`,
@@ -34,6 +35,7 @@ export class EmbeddingService {
     this.model = await llama.loadModel({ modelPath: this.config.modelPath });
     this.ctx = await this.model.createEmbeddingContext();
     this.ready = true;
+    return true;
   }
 
   async embed(text: string): Promise<number[]> {

@@ -33,11 +33,28 @@ import { writeHandoffFileSync } from "./handoff-file.js";
 import { runDeferredCleanup } from "./deferred-cleanup.js";
 import { swallow } from "./errors.js";
 
-let globalState: GlobalPluginState | null = null;
+// Use process-global symbols so state survives Jiti re-importing the module.
+// Jiti may load this file multiple times (fresh module scope each time),
+// but process.env and Symbol.for() are process-wide singletons.
+const GLOBAL_KEY = Symbol.for("kongbrain.globalState");
+const REGISTERED_KEY = Symbol.for("kongbrain.registered");
+
+function getGlobalState(): GlobalPluginState | null {
+  return (globalThis as any)[GLOBAL_KEY] ?? null;
+}
+function setGlobalState(state: GlobalPluginState): void {
+  (globalThis as any)[GLOBAL_KEY] = state;
+}
+function isRegistered(): boolean {
+  return (globalThis as any)[REGISTERED_KEY] === true;
+}
+function markRegistered(): void {
+  (globalThis as any)[REGISTERED_KEY] = true;
+}
+
 let shutdownPromise: Promise<void> | null = null;
 let registeredExitHandler: (() => void) | null = null;
 let registeredSyncExitHandler: (() => void) | null = null;
-let registered = false;
 
 /**
  * Run the critical session-end extraction for all active sessions.
@@ -295,9 +312,11 @@ export default definePluginEntry({
     const config = parsePluginConfig(api.pluginConfig as Record<string, unknown> | undefined);
     const logger = api.logger;
 
-    // Initialize shared resources — reuse existing globalState if register() is called
-    // multiple times (OpenClaw may invoke the factory more than once). Hooks from the
-    // first register() hold a closure over globalState, so replacing it would orphan them.
+    // Initialize shared resources — reuse existing state if register() is called
+    // multiple times (OpenClaw may invoke the factory more than once, and Jiti may
+    // re-import the module creating fresh module scope). Process-global symbols
+    // ensure a single instance survives across module reloads.
+    let globalState = getGlobalState();
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = new EmbeddingService(config.embedding);
@@ -365,6 +384,7 @@ export default definePluginEntry({
         return { text, thinking, usage: { input: response.usage.input, output: response.usage.output } };
       };
       globalState = new GlobalPluginState(config, store, embeddings, complete);
+      setGlobalState(globalState);
     }
     globalState.workspaceDir = api.resolvePath(".");
     globalState.enqueueSystemEvent = (text, opts) =>
@@ -376,19 +396,19 @@ export default definePluginEntry({
     api.registerContextEngine("kongbrain", async () => {
       const { store, embeddings } = state;
 
-      // Connect to SurrealDB
+      // Connect to SurrealDB (no-op if already connected)
       try {
-        await store.initialize();
-        logger.info(`SurrealDB connected: ${config.surreal.url}`);
+        const freshConnect = await store.initialize();
+        if (freshConnect) logger.info(`SurrealDB connected: ${config.surreal.url}`);
       } catch (e) {
         logger.error(`SurrealDB connection failed: ${e}`);
         throw e;
       }
 
-      // Initialize BGE-M3 embeddings
+      // Initialize BGE-M3 embeddings (no-op if already loaded)
       try {
-        await embeddings.initialize();
-        logger.info(`BGE-M3 embeddings initialized: ${config.embedding.modelPath}`);
+        const freshEmbed = await embeddings.initialize();
+        if (freshEmbed) logger.info(`BGE-M3 embeddings initialized: ${config.embedding.modelPath}`);
       } catch (e) {
         logger.warn(`Embeddings init failed — running in degraded mode: ${e}`);
       }
@@ -403,7 +423,7 @@ export default definePluginEntry({
 
     // ── Hook handlers (register once — register() may be called multiple times) ──
 
-    if (!registered) {
+    if (!isRegistered()) {
       api.on("before_prompt_build", createBeforePromptBuildHandler(globalState));
       api.on("before_tool_call", createBeforeToolCallHandler(globalState));
       api.on("after_tool_call", createAfterToolCallHandler(globalState));
@@ -412,7 +432,8 @@ export default definePluginEntry({
 
     // ── Session lifecycle (also register once) ─────────────────────────
 
-    if (!registered) api.on("session_start", async (event) => {
+    if (!isRegistered()) api.on("session_start", async (event) => {
+      const globalState = getGlobalState();
       if (!globalState) return;
       const sessionKey = event.sessionKey ?? event.sessionId;
       const session = globalState.getOrCreateSession(sessionKey, event.sessionId);
@@ -486,7 +507,8 @@ export default definePluginEntry({
         .catch(e => swallow.warn("index:deferredCleanup", e));
     });
 
-    if (!registered) api.on("session_end", async (event) => {
+    if (!isRegistered()) api.on("session_end", async (event) => {
+      const globalState = getGlobalState();
       if (!globalState) return;
       const sessionKey = event.sessionKey ?? event.sessionId;
       const session = globalState.getSession(sessionKey);
@@ -498,7 +520,7 @@ export default definePluginEntry({
 
       session.cleanedUp = true;
       if (session.surrealSessionId) {
-        await store.markSessionEnded(session.surrealSessionId)
+        await globalState.store.markSessionEnded(session.surrealSessionId)
           .catch(e => swallow.warn("session_end:markEnded", e));
       }
 
@@ -522,8 +544,9 @@ export default definePluginEntry({
 
     // Sync exit handler: writes handoff file for all uncleaned sessions
     const syncExitHandler = () => {
-      if (!globalState?.workspaceDir) return;
-      const sessions = [...(globalState as any).sessions.values()] as import("./state.js").SessionState[];
+      const gs = getGlobalState();
+      if (!gs?.workspaceDir) return;
+      const sessions = [...(gs as any).sessions.values()] as import("./state.js").SessionState[];
       for (const session of sessions) {
         if (session.cleanedUp) continue;
         writeHandoffFileSync({
@@ -533,21 +556,22 @@ export default definePluginEntry({
           lastUserText: session.lastUserText.slice(0, 500),
           lastAssistantText: session.lastAssistantText.slice(0, 500),
           unextractedTokens: session.newContentTokens,
-        }, globalState!.workspaceDir!);
+        }, gs.workspaceDir!);
       }
     };
 
     // Async exit handler: full cleanup for SIGTERM (gateway/daemon mode)
     const asyncExitHandler = () => {
-      if (!globalState) return;
-      const sessions = [...(globalState as any).sessions.values()] as import("./state.js").SessionState[];
+      const gs = getGlobalState();
+      if (!gs) return;
+      const sessions = [...(gs as any).sessions.values()] as import("./state.js").SessionState[];
       if (sessions.length === 0 && !shutdownPromise) return;
 
-      const cleanups = sessions.map(s => runSessionCleanup(s, globalState!));
+      const cleanups = sessions.map(s => runSessionCleanup(s, gs));
       if (shutdownPromise) cleanups.push(shutdownPromise);
 
       const done = Promise.allSettled(cleanups).then(() => {
-        globalState?.shutdown().catch(() => {});
+        gs.shutdown().catch(() => {});
       });
 
       done.then(() => process.exit(0)).catch(() => process.exit(1));
@@ -558,8 +582,6 @@ export default definePluginEntry({
     process.on("exit", syncExitHandler);
     process.once("SIGTERM", asyncExitHandler);
 
-    if (!registered) {
-      registered = true;
-    }
+    markRegistered();
   },
 });

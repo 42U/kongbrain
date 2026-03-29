@@ -112,12 +112,13 @@ export class SurrealStore {
     this.db = new Surreal();
   }
 
-  async initialize(): Promise<void> {
+  /** Connect and run schema. Returns true if a new connection was made, false if already initialized. */
+  async initialize(): Promise<boolean> {
     // Only connect once — subsequent calls are no-ops.
     // This prevents register()/factory re-invocations from disrupting
     // in-flight operations (deferred cleanup, daemon extraction).
     // Don't check isConnected — ensureConnected() handles reconnection.
-    if (this.initialized) return;
+    if (this.initialized) return false;
     await this.db.connect(this.config.url, {
       namespace: this.config.ns,
       database: this.config.db,
@@ -125,6 +126,7 @@ export class SurrealStore {
     });
     await this.runSchema();
     this.initialized = true;
+    return true;
   }
 
   markShutdown(): void {
