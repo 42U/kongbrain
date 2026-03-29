@@ -317,6 +317,7 @@ export default definePluginEntry({
     // re-import the module creating fresh module scope). Process-global symbols
     // ensure a single instance survives across module reloads.
     let globalState = getGlobalState();
+    console.warn(`[register] globalState=${globalState ? "EXISTS" : "NULL"} isRegistered=${isRegistered()}`);
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = new EmbeddingService(config.embedding);
@@ -418,6 +419,7 @@ export default definePluginEntry({
         .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
         .catch(e => swallow.warn("factory:seedIdentity", e));
 
+      console.warn(`[factory] state=${state === getGlobalState() ? "SAME" : "DIFFERENT"}`);
       return new KongBrainContextEngine(state);
     });
 
