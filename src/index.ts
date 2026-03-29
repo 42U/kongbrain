@@ -362,23 +362,26 @@ export default definePluginEntry({
 
       // Synthesize wakeup briefing (background, non-blocking)
       // The briefing is stored and later injected via assemble()'s systemPromptAddition
+      console.log("[kongbrain:wakeup] starting synthesis...");
       synthesizeWakeup(store, globalState!.complete, session.sessionId)
         .then(briefing => {
+          console.log(`[kongbrain:wakeup] result: ${briefing ? briefing.length + " chars" : "null (no prior state)"}`);
           if (briefing) {
-            // Store for later injection via context engine
             (session as any)._wakeupBriefing = briefing;
           }
         })
-        .catch(e => swallow.warn("index:wakeup", e));
+        .catch(e => { console.error("[kongbrain:wakeup] FAILED:", e); swallow.warn("index:wakeup", e); });
 
       // Startup cognition (background)
+      console.log("[kongbrain:cognition] starting synthesis...");
       synthesizeStartupCognition(store, globalState!.complete)
         .then(cognition => {
+          console.log(`[kongbrain:cognition] result: ${cognition ? JSON.stringify(cognition).slice(0, 200) : "null"}`);
           if (cognition) {
             (session as any)._startupCognition = cognition;
           }
         })
-        .catch(e => swallow.warn("index:startupCognition", e));
+        .catch(e => { console.error("[kongbrain:cognition] FAILED:", e); swallow.warn("index:startupCognition", e); });
     });
 
     api.on("session_end", async (event) => {

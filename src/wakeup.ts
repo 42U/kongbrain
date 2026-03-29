@@ -276,7 +276,6 @@ Return ONLY valid JSON.`,
     const systemPrompt = greetingPrompts[Math.floor(Math.random() * greetingPrompts.length)];
 
     const response = await complete({
-      model: "claude-haiku-4-5",
       system: systemPrompt,
       messages: [{
         role: "user",
