@@ -337,16 +337,18 @@ export default definePluginEntry({
       return new KongBrainContextEngine(state);
     });
 
-    // ── Hook handlers ──────────────────────────────────────────────────
+    // ── Hook handlers (register once — register() may be called multiple times) ──
 
-    api.on("before_prompt_build", createBeforePromptBuildHandler(globalState));
-    api.on("before_tool_call", createBeforeToolCallHandler(globalState));
-    api.on("after_tool_call", createAfterToolCallHandler(globalState));
-    api.on("llm_output", createLlmOutputHandler(globalState));
+    if (!registered) {
+      api.on("before_prompt_build", createBeforePromptBuildHandler(globalState));
+      api.on("before_tool_call", createBeforeToolCallHandler(globalState));
+      api.on("after_tool_call", createAfterToolCallHandler(globalState));
+      api.on("llm_output", createLlmOutputHandler(globalState));
+    }
 
-    // ── Session lifecycle ──────────────────────────────────────────────
+    // ── Session lifecycle (also register once) ─────────────────────────
 
-    api.on("session_start", async (event) => {
+    if (!registered) api.on("session_start", async (event) => {
       if (!globalState) return;
       const sessionKey = event.sessionKey ?? event.sessionId;
       const session = globalState.getOrCreateSession(sessionKey, event.sessionId);
@@ -420,7 +422,7 @@ export default definePluginEntry({
         .catch(e => swallow.warn("index:deferredCleanup", e));
     });
 
-    api.on("session_end", async (event) => {
+    if (!registered) api.on("session_end", async (event) => {
       if (!globalState) return;
       const sessionKey = event.sessionKey ?? event.sessionId;
       const session = globalState.getSession(sessionKey);
