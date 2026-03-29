@@ -291,6 +291,11 @@ export default definePluginEntry({
         logger.warn(`Embeddings init failed — running in degraded mode: ${e}`);
       }
 
+      // Seed identity chunks (idempotent, requires embeddings ready)
+      seedIdentity(store, embeddings)
+        .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
+        .catch(e => swallow.warn("factory:seedIdentity", e));
+
       return new KongBrainContextEngine(globalState!);
     });
 
@@ -338,10 +343,6 @@ export default definePluginEntry({
         swallow.warn("index:startDaemon", e);
       }
 
-      // Seed identity chunks (idempotent — skips if already seeded)
-      seedIdentity(store, embeddings)
-        .catch(e => swallow.warn("index:seedIdentity", e));
-
       // Check for workspace .md files from the default context engine
       if (globalState!.workspaceDir) {
         hasMigratableFiles(globalState!.workspaceDir)
@@ -362,26 +363,18 @@ export default definePluginEntry({
 
       // Synthesize wakeup briefing (background, non-blocking)
       // The briefing is stored and later injected via assemble()'s systemPromptAddition
-      console.log("[kongbrain:wakeup] starting synthesis...");
       synthesizeWakeup(store, globalState!.complete, session.sessionId)
         .then(briefing => {
-          console.log(`[kongbrain:wakeup] result: ${briefing ? briefing.length + " chars" : "null (no prior state)"}`);
-          if (briefing) {
-            (session as any)._wakeupBriefing = briefing;
-          }
+          if (briefing) (session as any)._wakeupBriefing = briefing;
         })
-        .catch(e => { console.error("[kongbrain:wakeup] FAILED:", e); swallow.warn("index:wakeup", e); });
+        .catch(e => swallow.warn("index:wakeup", e));
 
       // Startup cognition (background)
-      console.log("[kongbrain:cognition] starting synthesis...");
       synthesizeStartupCognition(store, globalState!.complete)
         .then(cognition => {
-          console.log(`[kongbrain:cognition] result: ${cognition ? JSON.stringify(cognition).slice(0, 200) : "null"}`);
-          if (cognition) {
-            (session as any)._startupCognition = cognition;
-          }
+          if (cognition) (session as any)._startupCognition = cognition;
         })
-        .catch(e => { console.error("[kongbrain:cognition] FAILED:", e); swallow.warn("index:startupCognition", e); });
+        .catch(e => swallow.warn("index:startupCognition", e));
     });
 
     api.on("session_end", async (event) => {

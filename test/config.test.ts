@@ -63,7 +63,7 @@ describe("parsePluginConfig", () => {
     expect(config.embedding.dimensions).toBe(768);
   });
 
-  it("env vars override plugin config", () => {
+  it("plugin config takes priority over env vars", () => {
     process.env.SURREAL_URL = "ws://env-override:1234/rpc";
     process.env.SURREAL_USER = "envuser";
     process.env.SURREAL_PASS = "envpass";
@@ -72,11 +72,13 @@ describe("parsePluginConfig", () => {
     process.env.EMBED_MODEL_PATH = "/env/model.gguf";
 
     const config = parsePluginConfig({
-      surreal: { url: "ws://should-be-overridden:8042/rpc", user: "ignored" },
+      surreal: { url: "ws://plugin-config:8042/rpc", user: "pluginuser" },
     });
 
-    expect(config.surreal.url).toBe("ws://env-override:1234/rpc");
-    expect(config.surreal.user).toBe("envuser");
+    // Plugin config wins over env vars
+    expect(config.surreal.url).toBe("ws://plugin-config:8042/rpc");
+    expect(config.surreal.user).toBe("pluginuser");
+    // Fields not in plugin config fall back to env vars
     expect(config.surreal.pass).toBe("envpass");
     expect(config.surreal.ns).toBe("envns");
     expect(config.surreal.db).toBe("envdb");

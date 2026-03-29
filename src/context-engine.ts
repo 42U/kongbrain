@@ -53,7 +53,7 @@ export class KongBrainContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
     id: "kongbrain",
     name: "KongBrain",
-    version: "0.1.0",
+    version: "0.1.1",
     ownsCompaction: true,
   };
 
@@ -227,10 +227,9 @@ export class KongBrainContextEngine implements ContextEngine {
 
     try {
       const role = (msg as any).role as string;
-      console.log(`[kongbrain:ingest] role=${role} sessionId=${params.sessionId}`);
       if (role === "user" || role === "assistant") {
         const text = extractMessageText(msg);
-        if (!text) { console.log("[kongbrain:ingest] empty text, skipping"); return { ingested: false }; }
+        if (!text) return { ingested: false };
 
         const worthEmbedding = hasSemantic(text);
         let embedding: number[] | null = null;
@@ -248,7 +247,6 @@ export class KongBrainContextEngine implements ContextEngine {
           embedding,
         });
 
-        console.log(`[kongbrain:ingest] turnId=${turnId} role=${role} textLen=${text.length}`);
         if (turnId) {
           await store.relate(turnId, "part_of", session.sessionId)
             .catch(e => swallow.warn("ingest:relate", e));
