@@ -353,7 +353,7 @@ export default definePluginEntry({
         // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
         const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
         const modelId = params.model ?? apiRef.runtime.agent.defaults.model;
-        const model = piAi.getModel(provider, modelId);
+        const model = piAi!.getModel(provider, modelId);
         if (!model) {
           throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
         }
@@ -372,7 +372,7 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
-        const response = await piAi.completeSimple(model, context, {
+        const response = await piAi!.completeSimple(model, context, {
           apiKey: auth.apiKey,
         });
         let text = "";
@@ -483,26 +483,26 @@ export default definePluginEntry({
       setReflectionContextWindow(200000);
 
       // Check for recent graduation event (from a previous session)
-      detectGraduationEvent(store, session, globalState!)
+      detectGraduationEvent(globalState!.store, session, globalState!)
         .catch(e => swallow("index:graduationDetect", e));
 
       // Synthesize wakeup briefing (background, non-blocking)
       // The briefing is stored and later injected via assemble()'s systemPromptAddition
-      synthesizeWakeup(store, globalState!.complete, session.sessionId, globalState!.workspaceDir)
+      synthesizeWakeup(globalState!.store, globalState!.complete, session.sessionId, globalState!.workspaceDir)
         .then(briefing => {
           if (briefing) (session as any)._wakeupBriefing = briefing;
         })
         .catch(e => swallow.warn("index:wakeup", e));
 
       // Startup cognition (background)
-      synthesizeStartupCognition(store, globalState!.complete)
+      synthesizeStartupCognition(globalState!.store, globalState!.complete)
         .then(cognition => {
           if (cognition) (session as any)._startupCognition = cognition;
         })
         .catch(e => swallow.warn("index:startupCognition", e));
 
       // Deferred cleanup: extract knowledge from orphaned sessions (background)
-      runDeferredCleanup(store, embeddings, globalState!.complete)
+      runDeferredCleanup(globalState!.store, globalState!.embeddings, globalState!.complete)
         .then(n => { if (n > 0) logger.info(`Deferred cleanup: processed ${n} orphaned session(s)`); })
         .catch(e => swallow.warn("index:deferredCleanup", e));
     });

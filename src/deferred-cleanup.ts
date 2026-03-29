@@ -15,25 +15,29 @@ import { buildSystemPrompt, buildTranscript, writeExtractionResults } from "./me
 import type { PriorExtractions } from "./daemon-types.js";
 import { swallow } from "./errors.js";
 
-// Module-level lock prevents concurrent/duplicate runs from multiple
-// register() → afterTurn() invocations.
-let running = false;
+// Process-global flag — deferred cleanup runs AT MOST ONCE per process.
+// Using Symbol.for so it survives Jiti re-importing this module.
+const RAN_KEY = Symbol.for("kongbrain.deferredCleanup.ran");
 
 /**
  * Find and process orphaned sessions. Runs with a 30s total timeout.
  * Fire-and-forget from session_start — does not block the new session.
+ * Only runs once per process lifetime.
  */
 export async function runDeferredCleanup(
   store: SurrealStore,
   embeddings: EmbeddingService,
   complete: CompleteFn,
 ): Promise<number> {
-  if (running) return 0;
-  running = true;
+  // Once per process — never re-run even if first run times out
+  if ((globalThis as any)[RAN_KEY]) return 0;
+  (globalThis as any)[RAN_KEY] = true;
+
   try {
     return await runDeferredCleanupInner(store, embeddings, complete);
-  } finally {
-    running = false;
+  } catch (e) {
+    swallow.warn("deferredCleanup:outer", e);
+    return 0;
   }
 }
 
@@ -46,6 +50,13 @@ async function runDeferredCleanupInner(
 
   const orphaned = await store.getOrphanedSessions(10).catch(() => []);
   if (orphaned.length === 0) return 0;
+
+  // Immediately claim all orphaned sessions so no concurrent run can pick them up
+  await Promise.all(
+    orphaned.map(s =>
+      store.markSessionEnded(s.id).catch(e => swallow("deferred:claim", e))
+    )
+  );
 
   let processed = 0;
 
@@ -60,10 +71,10 @@ async function runDeferredCleanupInner(
     }
   };
 
-  // 30s timeout — don't hold up the new session forever
+  // 90s timeout — each session needs ~6s (2 LLM calls), 10 sessions ≈ 60s
   await Promise.race([
     cleanup(),
-    new Promise<void>(resolve => setTimeout(resolve, 30_000)),
+    new Promise<void>(resolve => setTimeout(resolve, 90_000)),
   ]);
 
   return processed;
@@ -84,8 +95,6 @@ async function processOrphanedSession(
   ).catch(() => []);
 
   if (turns.length < 2) {
-    // Nothing to extract, just mark complete
-    await store.markSessionEnded(surrealSessionId).catch(e => swallow("deferred:markEmpty", e));
     return;
   }
 
@@ -118,8 +127,7 @@ async function processOrphanedSession(
       const keys = Object.keys(result);
       console.warn(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);
       if (keys.length > 0) {
-        const sessionId = surrealSessionId;
-        await writeExtractionResults(result, sessionId, store, embeddings, priorState);
+        await writeExtractionResults(result, surrealSessionId, store, embeddings, priorState);
         console.warn(`[deferred] wrote extraction results for ${surrealSessionId}`);
       }
     } else {
@@ -153,7 +161,4 @@ async function processOrphanedSession(
   } catch (e) {
     swallow.warn("deferredCleanup:handoff", e);
   }
-
-  // Mark session as cleaned up
-  await store.markSessionEnded(surrealSessionId).catch(e => swallow("deferred:markDone", e));
 }

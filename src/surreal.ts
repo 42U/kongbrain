@@ -227,16 +227,43 @@ export class SurrealStore {
     }
   }
 
+  /** Returns true if an error is a connection-level failure worth retrying. */
+  private isConnectionError(e: unknown): boolean {
+    const msg = String((e as any)?.message ?? e);
+    return msg.includes("must be connected") || msg.includes("ConnectionUnavailable");
+  }
+
+  /** Run a query function with one retry on connection errors. */
+  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!this.isConnectionError(e)) throw e;
+      // Connection died — force a fresh connection (close stale socket first)
+      this.initialized = false;
+      try { await this.db?.close(); } catch { /* ignore */ }
+      this.db = new Surreal();
+      await this.db.connect(this.config.url, {
+        namespace: this.config.ns,
+        database: this.config.db,
+        authentication: { username: this.config.user, password: this.config.pass },
+      });
+      return await fn();
+    }
+  }
+
   // ── Query helpers ──────────────────────────────────────────────────────
 
   async queryFirst<T>(sql: string, bindings?: Record<string, unknown>): Promise<T[]> {
     await this.ensureConnected();
-    const ns = this.config.ns;
-    const dbName = this.config.db;
-    const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
-    const result = await this.db.query<[T[]]>(fullSql, bindings);
-    const rows = Array.isArray(result) ? result[result.length - 1] : result;
-    return (Array.isArray(rows) ? rows : []).filter(Boolean);
+    return this.withRetry(async () => {
+      const ns = this.config.ns;
+      const dbName = this.config.db;
+      const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
+      const result = await this.db.query<[T[]]>(fullSql, bindings);
+      const rows = Array.isArray(result) ? result[result.length - 1] : result;
+      return (Array.isArray(rows) ? rows : []).filter(Boolean);
+    });
   }
 
   async queryMulti<T = unknown>(
@@ -244,20 +271,24 @@ export class SurrealStore {
     bindings?: Record<string, unknown>,
   ): Promise<T | undefined> {
     await this.ensureConnected();
-    const ns = this.config.ns;
-    const dbName = this.config.db;
-    const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
-    const raw = await this.db.query(fullSql, bindings);
-    const flat = (raw as unknown[]).flat();
-    return flat[flat.length - 1] as T | undefined;
+    return this.withRetry(async () => {
+      const ns = this.config.ns;
+      const dbName = this.config.db;
+      const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
+      const raw = await this.db.query(fullSql, bindings);
+      const flat = (raw as unknown[]).flat();
+      return flat[flat.length - 1] as T | undefined;
+    });
   }
 
   async queryExec(sql: string, bindings?: Record<string, unknown>): Promise<void> {
     await this.ensureConnected();
-    const ns = this.config.ns;
-    const dbName = this.config.db;
-    const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
-    await this.db.query(fullSql, bindings);
+    return this.withRetry(async () => {
+      const ns = this.config.ns;
+      const dbName = this.config.db;
+      const fullSql = `USE NS ${ns} DB ${dbName}; ${patchOrderByFields(sql)}`;
+      await this.db.query(fullSql, bindings);
+    });
   }
 
   private async safeQuery(

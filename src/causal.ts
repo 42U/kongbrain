@@ -86,7 +86,7 @@ export async function linkCausalEdges(
       // Store chain metadata
       await store.queryExec(`CREATE causal_chain CONTENT $data`, {
         data: {
-          session_id: sessionId,
+          session_id: String(sessionId),
           trigger_memory: triggerId,
           outcome_memory: outcomeId,
           description_memory: descriptionId,
