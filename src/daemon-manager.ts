@@ -7,11 +7,10 @@
  * The extraction is I/O-bound (LLM calls + DB writes), not CPU-bound,
  * so in-process execution is fine.
  */
-import type { SurrealConfig, EmbeddingConfig } from "./config.js";
 import type { TurnData, PriorExtractions } from "./daemon-types.js";
 import type { CompleteFn } from "./state.js";
-import { SurrealStore } from "./surreal.js";
-import { EmbeddingService } from "./embeddings.js";
+import type { SurrealStore } from "./surreal.js";
+import type { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
 
 export type { TurnData } from "./daemon-types.js";
@@ -33,16 +32,14 @@ export interface MemoryDaemon {
 }
 
 export function startMemoryDaemon(
-  surrealConfig: SurrealConfig,
-  embeddingConfig: EmbeddingConfig,
+  sharedStore: SurrealStore,
+  sharedEmbeddings: EmbeddingService,
   sessionId: string,
   complete: CompleteFn,
 ): MemoryDaemon {
-  // Daemon-local DB and embedding instances (separate connections)
-  let store: SurrealStore | null = null;
-  let embeddings: EmbeddingService | null = null;
-  let initialized = false;
-  let initFailed = false;
+  // Use shared store/embeddings from global state (no duplicate connections)
+  const store = sharedStore;
+  const embeddings = sharedEmbeddings;
   let processing = false;
   let shuttingDown = false;
   let extractedTurnCount = 0;
@@ -51,24 +48,6 @@ export function startMemoryDaemon(
   const priorState: PriorExtractions = {
     conceptNames: [], artifactPaths: [], skillNames: [],
   };
-
-  // Lazy init — connect on first batch, not at startup
-  async function ensureInit(): Promise<boolean> {
-    if (initialized) return true;
-    if (initFailed) return false;
-    try {
-      store = new SurrealStore(surrealConfig);
-      await store.initialize();
-      embeddings = new EmbeddingService(embeddingConfig);
-      await embeddings.initialize();
-      initialized = true;
-      return true;
-    } catch (e) {
-      swallow.warn("daemon:init", e);
-      initFailed = true;
-      return false;
-    }
-  }
 
   // Import extraction logic lazily to avoid circular deps
   async function runExtraction(
@@ -172,10 +151,8 @@ export function startMemoryDaemon(
     sendTurnBatch(turns, thinking, retrievedMemories, priorExtractions) {
       if (shuttingDown) return;
       pendingBatch = { turns, thinking, retrievedMemories, priorExtractions };
-      // Fire-and-forget: init if needed, then process
-      ensureInit()
-        .then(ok => { if (ok) return processPending(); })
-        .catch(e => swallow.warn("daemon:sendBatch", e));
+      // Fire-and-forget
+      processPending().catch(e => swallow.warn("daemon:sendBatch", e));
     },
 
     async getStatus() {
@@ -200,13 +177,7 @@ export function startMemoryDaemon(
           new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
         ]);
       }
-      // Clean up daemon-local connections
-      await Promise.allSettled([
-        store?.dispose(),
-        embeddings?.dispose(),
-      ]).catch(() => {});
-      store = null;
-      embeddings = null;
+      // Shared store/embeddings — don't dispose (owned by global state)
     },
 
     getExtractedTurnCount() {

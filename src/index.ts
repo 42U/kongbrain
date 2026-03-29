@@ -459,8 +459,8 @@ export default definePluginEntry({
       // Start memory daemon worker thread
       try {
         session.daemon = startMemoryDaemon(
-          config.surreal,
-          config.embedding,
+          globalState!.store,
+          globalState!.embeddings,
           session.sessionId,
           globalState!.complete,
         );
