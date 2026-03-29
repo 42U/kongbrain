@@ -60,17 +60,8 @@ export async function extractSkill(
 ): Promise<string | null> {
   if (!store.isAvailable()) return null;
 
-  // Check if session had enough tool activity
-  const metricsRows = await store.queryFirst<{ totalTools: number }>(
-    `SELECT math::sum(actual_tool_calls) AS totalTools
-     FROM orchestrator_metrics WHERE session_id = $sid GROUP ALL`,
-    { sid: sessionId },
-  ).catch(() => [] as { totalTools: number }[]);
-  const totalTools = Number(metricsRows[0]?.totalTools ?? 0);
-  if (totalTools < 3) return null;
-
   const turns = await store.getSessionTurns(sessionId, 50);
-  if (turns.length < 4) return null;
+  if (turns.length < 4) return null; // Too short for skill extraction
 
   const transcript = turns
     .map((t) => `[${t.role}] ${(t.text ?? "").slice(0, 300)}`)
@@ -81,7 +72,7 @@ export async function extractSkill(
       system: `Return JSON or null. Fields: {name, description, preconditions, steps: [{tool, description}] (max 8), postconditions}. Generic patterns only (no specific paths). null if no clear multi-step workflow.`,
       messages: [{
         role: "user",
-        content: `${totalTools} tool calls:\n${transcript.slice(0, 20000)}`,
+        content: `${turns.length} turns:\n${transcript.slice(0, 20000)}`,
       }],
     });
 

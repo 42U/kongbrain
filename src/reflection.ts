@@ -140,30 +140,31 @@ export async function generateReflection(
   embeddings: EmbeddingService,
   complete: CompleteFn,
 ): Promise<void> {
-  const metrics = await gatherSessionMetrics(sessionId, store);
-  if (!metrics) return;
+  if (!store.isAvailable()) return;
 
-  const { reflect, reasons } = shouldReflect(metrics);
-  if (!reflect) return;
+  // Get session turns directly — no dependency on orchestrator_metrics
+  const turns = await store.getSessionTurns(sessionId, 30).catch(() => []);
+  if (turns.length < 3) return; // Too short for meaningful reflection
 
-  const severity = reasons.length >= 3 ? "critical" : reasons.length >= 2 ? "moderate" : "minor";
+  const transcript = turns
+    .map(t => `[${t.role}] ${(t.text ?? "").slice(0, 300)}`)
+    .join("\n");
 
-  let category = "efficiency";
-  if (metrics.toolFailureRate > TOOL_FAILURE_THRESHOLD) category = "failure_pattern";
-  if (metrics.steeringCandidates >= STEERING_THRESHOLD) category = "approach_strategy";
+  const severity = turns.length >= 15 ? "moderate" : "minor";
+  const category = "session_review";
 
   try {
     const response = await complete({
-      system: `Write 2-4 sentences: root cause, error pattern, what to do differently. Be specific. Example: "Spent 8 tool calls reading source before checking error log. For timeout bugs, check logs first."`,
+      system: `Reflect on this session. Write 2-4 sentences about: what went well, what could improve, any patterns worth noting. Be specific and actionable. If the session was too trivial for reflection, respond with just "skip".`,
       messages: [{
         role: "user",
-        content: `${metrics.totalTurns} turns, ${metrics.totalToolCalls} tools, ${(metrics.avgUtilization * 100).toFixed(0)}% util, ${(metrics.toolFailureRate * 100).toFixed(0)}% fail, ~${metrics.wastedTokens} wasted tokens\nIssues: ${reasons.join("; ")}`,
+        content: `Session with ${turns.length} turns:\n${transcript.slice(0, 15000)}`,
       }],
     });
 
     const reflectionText = response.text.trim();
 
-    if (reflectionText.length < 20) return;
+    if (reflectionText.length < 20 || reflectionText.toLowerCase() === "skip") return;
 
     let reflEmb: number[] | null = null;
     if (embeddings.isAvailable()) {

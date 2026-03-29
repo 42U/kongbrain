@@ -37,11 +37,12 @@ ${dedup}
     // Only when there's a clear trigger and outcome. Max 5.
     {"triggerText": "what caused it (max 200 chars)", "outcomeText": "what happened as a result", "chainType": "debug|refactor|feature|fix", "success": true/false, "confidence": 0.0-1.0, "description": "1-sentence summary"}
   ],
-${hasThinking ? `  "monologue": [
+  "monologue": [
     // Internal reasoning moments worth preserving: doubts, tradeoffs, insights, realizations.
+    // Infer from the conversation flow — approach changes, surprising discoveries, tradeoff decisions.
     // Skip routine reasoning. Only novel/surprising thoughts. Max 5.
     {"category": "doubt|tradeoff|alternative|insight|realization", "content": "1-2 sentence description"}
-  ],` : '  "monologue": [],'}
+  ],
 ${hasRetrievedMemories ? `  "resolved": [
     // IDs from [RETRIEVED MEMORIES] that have been FULLY addressed/fixed/completed in this conversation.
     // Must be exact IDs like "memory:abc123". Empty [] if none resolved.
