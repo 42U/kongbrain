@@ -88,7 +88,7 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 ### 5. Talk to your ape
 
 ```bash
-onboard tui
+openclaw tui
 ```
 
 That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
