@@ -123,7 +123,7 @@ export class KongBrainContextEngine implements ContextEngine {
       store.consolidateMemories((text) => embeddings.embed(text)),
       store.garbageCollectMemories(),
       checkACANReadiness(store),
-      runDeferredCleanup(store, embeddings, this.state.complete),
+      // Deferred cleanup is triggered on first afterTurn() when complete() is available
     ]).catch(e => swallow.warn("bootstrap:maintenance", e));
 
     return { bootstrapped: true };
@@ -342,7 +342,13 @@ export class KongBrainContextEngine implements ContextEngine {
     const session = this.state.getSession(sessionKey);
     if (!session) return;
 
-    const { store } = this.state;
+    const { store, embeddings } = this.state;
+
+    // Deferred cleanup: run once on first turn when complete() is available
+    if (session.userTurnCount <= 1) {
+      runDeferredCleanup(store, embeddings, this.state.complete)
+        .catch(e => swallow.warn("afterTurn:deferredCleanup", e));
+    }
 
     // Ingest new messages from this turn (OpenClaw skips ingest() when afterTurn exists)
     const newMessages = params.messages.slice(params.prePromptMessageCount);
