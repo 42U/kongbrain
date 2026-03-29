@@ -282,8 +282,9 @@ function trainInBackground(
 const STALENESS_GROWTH_FACTOR = 0.5;
 const STALENESS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export async function checkACANReadiness(store?: SurrealStore): Promise<void> {
+export async function checkACANReadiness(store?: SurrealStore, trainingThreshold?: number): Promise<void> {
   if (!store) return;
+  const threshold = trainingThreshold ?? TRAINING_THRESHOLD;
   const weightsPath = join(getKongDir(), WEIGHTS_FILENAME);
   const hasWeights = initACAN();
   const count = await getTrainingDataCount(store);
@@ -295,13 +296,13 @@ export async function checkACANReadiness(store?: SurrealStore): Promise<void> {
     const ageMs = Date.now() - trainedAt;
     const isStale = growthRatio >= STALENESS_GROWTH_FACTOR || ageMs >= STALENESS_MAX_AGE_MS;
     if (!isStale) return;
-  } else if (count < TRAINING_THRESHOLD) {
+  } else if (count < threshold) {
     return;
   }
 
   try {
     const samples = await fetchTrainingData(store);
-    if (samples.length < TRAINING_THRESHOLD) return;
+    if (samples.length < threshold) return;
     trainInBackground(samples, weightsPath, hasWeights ? _weights ?? undefined : undefined);
   } catch {
     // training is best-effort

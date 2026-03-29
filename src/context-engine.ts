@@ -139,7 +139,7 @@ export class KongBrainContextEngine implements ContextEngine {
       store.archiveOldTurns(),
       store.consolidateMemories((text) => embeddings.embed(text)),
       store.garbageCollectMemories(),
-      checkACANReadiness(store),
+      checkACANReadiness(store, this.state.config.thresholds.acanTrainingThreshold),
       // Deferred cleanup is triggered on first afterTurn() when complete() is available
     ]).catch(e => swallow.warn("bootstrap:maintenance", e));
 
@@ -480,6 +480,12 @@ export class KongBrainContextEngine implements ContextEngine {
       cleanupOps.push(
         graduateCausalToSkills(store, embeddings, this.state.complete)
           .catch(e => swallow.warn("midCleanup:graduateCausal", e)),
+      );
+
+      // ACAN: check if new retrieval outcomes warrant retraining
+      cleanupOps.push(
+        checkACANReadiness(store, this.state.config.thresholds.acanTrainingThreshold)
+          .catch(e => swallow("midCleanup:acan", e)),
       );
 
       // Handoff note — snapshot for wakeup even if session continues

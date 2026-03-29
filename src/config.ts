@@ -24,6 +24,8 @@ export interface ThresholdConfig {
   extractionTimeoutMs: number;
   /** Max pending thinking blocks kept in memory (default: 20) */
   maxPendingThinking: number;
+  /** Retrieval outcome samples needed before ACAN training (default: 5000) */
+  acanTrainingThreshold: number;
 }
 
 export interface KongBrainConfig {
@@ -82,6 +84,8 @@ export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfi
         typeof thresholds.extractionTimeoutMs === "number" ? thresholds.extractionTimeoutMs : 60_000,
       maxPendingThinking:
         typeof thresholds.maxPendingThinking === "number" ? thresholds.maxPendingThinking : 20,
+      acanTrainingThreshold:
+        typeof thresholds.acanTrainingThreshold === "number" ? thresholds.acanTrainingThreshold : 5000,
     },
   };
 }
