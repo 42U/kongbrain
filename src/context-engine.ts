@@ -87,6 +87,7 @@ export class KongBrainContextEngine implements ContextEngine {
     // 5-pillar graph init
     const sessionKey = params.sessionKey ?? params.sessionId;
     const session = this.state.getOrCreateSession(sessionKey, params.sessionId);
+    console.warn(`[bootstrap] key=${sessionKey} sid=${params.sessionId} surrealSid=${session.surrealSessionId || "NEW"} turnCount=${session.userTurnCount}`);
 
     // Only create graph nodes on first bootstrap for this session
     if (!session.surrealSessionId) {
