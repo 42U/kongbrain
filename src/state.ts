@@ -60,7 +60,7 @@ export class SessionState {
   // Cumulative session token tracking (for mid-session cleanup trigger)
   cumulativeTokens = 0;
   lastCleanupTokens = 0;
-  midSessionCleanupThreshold = 100_000;
+  midSessionCleanupThreshold = 25_000;
 
   // Cleanup tracking
   cleanedUp = false;

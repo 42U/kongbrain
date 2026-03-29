@@ -79,7 +79,7 @@ export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfi
       daemonTokenThreshold:
         typeof thresholds.daemonTokenThreshold === "number" ? thresholds.daemonTokenThreshold : 4000,
       midSessionCleanupThreshold:
-        typeof thresholds.midSessionCleanupThreshold === "number" ? thresholds.midSessionCleanupThreshold : 100_000,
+        typeof thresholds.midSessionCleanupThreshold === "number" ? thresholds.midSessionCleanupThreshold : 25_000,
       extractionTimeoutMs:
         typeof thresholds.extractionTimeoutMs === "number" ? thresholds.extractionTimeoutMs : 60_000,
       maxPendingThinking:

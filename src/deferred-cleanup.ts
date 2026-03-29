@@ -119,7 +119,7 @@ async function processOrphanedSession(
 
     const responseText = response.text;
     console.warn(`[deferred] extraction response: ${responseText.length} chars`);
-    const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       let result: Record<string, any>;
       try {

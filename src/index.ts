@@ -65,6 +65,36 @@ async function runSessionCleanup(
   state: GlobalPluginState,
 ): Promise<void> {
   const { store: s, embeddings: emb } = state;
+  const { complete } = state;
+
+  // 1. Handoff FIRST — highest value, must survive even if cleanup races out
+  try {
+    const recentTurns = await s.getSessionTurns(session.sessionId, 15)
+      .catch(() => [] as { role: string; text: string }[]);
+    if (recentTurns.length >= 2) {
+      const turnSummary = recentTurns
+        .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)
+        .join("\n");
+
+      const handoffResponse = await complete({
+        system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
+        messages: [{ role: "user", content: turnSummary }],
+      });
+
+      const handoffText = handoffResponse.text.trim();
+      if (handoffText.length > 20) {
+        let embedding: number[] | null = null;
+        if (emb.isAvailable()) {
+          try { embedding = await emb.embed(handoffText); } catch { /* ok */ }
+        }
+        await s.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
+      }
+    }
+  } catch (e) {
+    swallow.warn("cleanup:handoff", e);
+  }
+
+  // 2. Everything else in parallel — lower priority, OK if timeout kills it
   const endOps: Promise<unknown>[] = [];
 
   // Final daemon flush — send full session for extraction
@@ -80,13 +110,11 @@ async function runSessionCleanup(
           }));
           session.daemon!.sendTurnBatch(turnData, [...session.pendingThinking], []);
         } catch (e) { swallow.warn("cleanup:finalDaemonFlush", e); }
-        await session.daemon!.shutdown(45_000).catch(e => swallow.warn("cleanup:daemonShutdown", e));
+        await session.daemon!.shutdown(10_000).catch(e => swallow.warn("cleanup:daemonShutdown", e));
         session.daemon = null;
       })(),
     );
   }
-
-  const { complete } = state;
 
   // Skill extraction
   if (session.taskId) {
@@ -113,10 +141,9 @@ async function runSessionCleanup(
     .catch(e => { swallow.warn("cleanup:soulGraduation", e); return null; });
   endOps.push(graduationPromise);
 
-  // The session-end LLM call is critical and needs the full 45s.
   await Promise.race([
     Promise.allSettled(endOps),
-    new Promise(resolve => setTimeout(resolve, 45_000)),
+    new Promise(resolve => setTimeout(resolve, 150_000)),
   ]);
 
   // If soul graduation just happened, persist a graduation event so the next
@@ -191,33 +218,6 @@ async function runSessionCleanup(
     }
   } catch (e) {
     swallow.warn("cleanup:stageTransition", e);
-  }
-
-  // Generate handoff note for next session wakeup
-  try {
-    const recentTurns = await s.getSessionTurns(session.sessionId, 15)
-      .catch(() => [] as { role: string; text: string }[]);
-    if (recentTurns.length >= 2) {
-      const turnSummary = recentTurns
-        .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)
-        .join("\n");
-
-      const handoffResponse = await complete({
-        system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
-        messages: [{ role: "user", content: turnSummary }],
-      });
-
-      const handoffText = handoffResponse.text.trim();
-      if (handoffText.length > 20) {
-        let embedding: number[] | null = null;
-        if (emb.isAvailable()) {
-          try { embedding = await emb.embed(handoffText); } catch { /* ok */ }
-        }
-        await s.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
-      }
-    }
-  } catch (e) {
-    swallow.warn("cleanup:handoff", e);
   }
 }
 
