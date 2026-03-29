@@ -2,3 +2,4 @@ node_modules/
 dist/
 .claude/
 .kongbrain-handoff.json
+publish.sh

@@ -22,3 +22,4 @@ package-lock.json
 
 # Internal docs
 UPSTREAM-PROPOSALS.md
+publish.sh
