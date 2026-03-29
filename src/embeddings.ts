@@ -16,6 +16,7 @@ export class EmbeddingService {
   constructor(private readonly config: EmbeddingConfig) {}
 
   async initialize(): Promise<void> {
+    if (this.ready) return;
     if (!existsSync(this.config.modelPath)) {
       throw new Error(
         `Embedding model not found at: ${this.config.modelPath}\n  Download BGE-M3 GGUF or set EMBED_MODEL_PATH`,

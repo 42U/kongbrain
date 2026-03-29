@@ -105,6 +105,7 @@ export class SurrealStore {
   private config: SurrealConfig;
   private reconnecting: Promise<void> | null = null;
   private shutdownFlag = false;
+  private initialized = false;
 
   constructor(config: SurrealConfig) {
     this.config = config;
@@ -112,12 +113,17 @@ export class SurrealStore {
   }
 
   async initialize(): Promise<void> {
+    // Only connect once — subsequent calls are no-ops if already connected.
+    // This prevents register()/factory re-invocations from disrupting
+    // in-flight operations (deferred cleanup, daemon extraction).
+    if (this.initialized && this.db.isConnected) return;
     await this.db.connect(this.config.url, {
       namespace: this.config.ns,
       database: this.config.db,
       authentication: { username: this.config.user, password: this.config.pass },
     });
     await this.runSchema();
+    this.initialized = true;
   }
 
   markShutdown(): void {
