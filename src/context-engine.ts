@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { startMemoryDaemon } from "./daemon-manager.js";
 import type {
   ContextEngine, ContextEngineInfo,
 } from "openclaw/plugin-sdk";
@@ -113,6 +114,13 @@ export class KongBrainContextEngine implements ContextEngine {
 
         session.surrealSessionId = surrealSessionId;
         session.lastUserTurnId = "";
+
+        // Start memory daemon for this session
+        if (!session.daemon) {
+          session.daemon = startMemoryDaemon(
+            store, embeddings, session.sessionId, this.state.complete,
+          );
+        }
       } catch (e) {
         swallow.error("bootstrap:5pillar", e);
       }
@@ -395,7 +403,6 @@ export class KongBrainContextEngine implements ContextEngine {
     // Flush to daemon when token threshold OR turn count threshold is reached
     const tokenReady = session.newContentTokens >= session.DAEMON_TOKEN_THRESHOLD;
     const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
-    console.warn(`[afterTurn] userTurns=${session.userTurnCount} tokens=${session.newContentTokens} daemon=${!!session.daemon} tokenReady=${tokenReady} turnReady=${turnReady}`);
     if (session.daemon && (tokenReady || turnReady)) {
       try {
         const recentTurns = await store.getSessionTurns(session.sessionId, 20);
