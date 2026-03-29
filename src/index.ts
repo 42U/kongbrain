@@ -495,7 +495,6 @@ export default definePluginEntry({
     process.once("SIGTERM", asyncExitHandler);
 
     if (!registered) {
-      logger.info("KongBrain plugin registered");
       registered = true;
     }
   },
