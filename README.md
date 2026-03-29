@@ -1,8 +1,4 @@
-<div align="center">
-
 # KongBrain
-
-![KongBrain](KongClaw.png)
 
 [![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)
 [![ClawHub](https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge)](https://clawhub.ai/packages/kongbrain)
@@ -20,8 +16,6 @@ Replace the default sliding-window context with a persistent memory graph. Vecto
 Your assistant stops forgetting. Then it starts getting better.
 
 [Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
-
-</div>
 
 ---
 
@@ -397,8 +391,4 @@ The lobster doesn't accept contributions. The ape does.
 
 ---
 
-<div align="center">
-
 MIT License | Built by [42U](https://github.com/42U)
-
-</div>
