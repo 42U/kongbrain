@@ -1,0 +1,24 @@
+# Binary assets (not text-based, rejected by clawhub)
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Dev tooling
+.claude/
+test/
+vitest.config.ts
+*.test.ts
+
+# Build/deps
+node_modules/
+dist/
+package-lock.json
+
+# Secrets/runtime
+.env
+.env.*
+.kongbrain-handoff.json
+
+# Internal docs
+UPSTREAM-PROPOSALS.md
