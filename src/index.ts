@@ -6,8 +6,8 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
@@ -304,14 +304,21 @@ export default definePluginEntry({
       // Build a CompleteFn using pi-ai directly since api.runtime.complete
       // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;
-      // Resolve pi-ai from openclaw's node_modules (not in kongbrain's).
-      // process.argv[1] points to openclaw's entry script, so createRequire
-      // from there can find openclaw's dependencies.
+      // Resolve pi-ai from openclaw's node_modules. pi-ai is ESM-only so
+      // require() can't load it. Walk up from process.argv[1] to find it,
+      // then lazy-load via import() on first use.
       let piAi: { getModel: any; completeSimple: any } | null = null;
-      try {
-        const ocRequire = createRequire(process.argv[1] || __filename);
-        piAi = ocRequire("@mariozechner/pi-ai");
-      } catch { /* pi-ai not available — complete will throw on use */ }
+      let piAiPath: string | null = null;
+      {
+        let dir = dirname(process.argv[1] || __filename);
+        for (let i = 0; i < 10; i++) {
+          const candidate = join(dir, "node_modules", "@mariozechner", "pi-ai", "dist", "index.js");
+          if (existsSync(candidate)) { piAiPath = candidate; break; }
+          const parent = dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      }
 
       const complete: CompleteFn = async (params) => {
         // Try runtime.complete first (future-proof for when it ships)
@@ -319,7 +326,10 @@ export default definePluginEntry({
           return apiRef.runtime.complete(params);
         }
         if (!piAi) {
-          throw new Error("LLM completion not available: @mariozechner/pi-ai not found and runtime.complete missing");
+          if (!piAiPath) {
+            throw new Error("LLM completion not available: @mariozechner/pi-ai not found and runtime.complete missing");
+          }
+          piAi = await import(piAiPath);
         }
         // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
         const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
