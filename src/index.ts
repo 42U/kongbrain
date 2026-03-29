@@ -32,6 +32,8 @@ import { swallow } from "./errors.js";
 
 let globalState: GlobalPluginState | null = null;
 let shutdownPromise: Promise<void> | null = null;
+let registeredExitHandler: (() => void) | null = null;
+let registered = false;
 
 /**
  * Run the critical session-end extraction for all active sessions.
@@ -395,16 +397,18 @@ export default definePluginEntry({
     // OpenClaw's session_end is fire-and-forget and doesn't fire on CLI exit.
     // Register a process exit handler to ensure the critical Opus extraction
     // completes even when the user exits with Ctrl+D or /exit.
+    // Clean up previous listeners first (register() can be called multiple times).
+    if (registeredExitHandler) {
+      process.removeListener("beforeExit", registeredExitHandler);
+      process.removeListener("SIGINT", registeredExitHandler);
+      process.removeListener("SIGTERM", registeredExitHandler);
+    }
+
     const onProcessExit = () => {
       if (!globalState) return;
-      // If session_end already ran, shutdownPromise is null — nothing to do.
-      // Otherwise, run cleanup for all active sessions.
       const sessions = [...(globalState as any).sessions.values()] as import("./state.js").SessionState[];
       if (sessions.length === 0 && !shutdownPromise) return;
 
-      // Keep the process alive until cleanup finishes.
-      // beforeExit fires when the event loop drains — returning a promise
-      // re-queues work and prevents immediate exit.
       const cleanups = sessions.map(s => runSessionCleanup(s, globalState!));
       if (shutdownPromise) cleanups.push(shutdownPromise);
 
@@ -412,14 +416,17 @@ export default definePluginEntry({
         globalState?.shutdown().catch(() => {});
       });
 
-      // Block exit until done
       done.then(() => process.exit(0)).catch(() => process.exit(1));
     };
 
+    registeredExitHandler = onProcessExit;
     process.once("beforeExit", onProcessExit);
     process.once("SIGINT", onProcessExit);
     process.once("SIGTERM", onProcessExit);
 
-    logger.info("KongBrain plugin registered");
+    if (!registered) {
+      logger.info("KongBrain plugin registered");
+      registered = true;
+    }
   },
 });

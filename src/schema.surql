@@ -2,19 +2,6 @@
 -- Run against ns:kong db:memory
 -- Aligned with 5-pillar model: Agent, Project, Task, Artifact, Concept
 
--- Migration: drop old 768d HNSW indexes (now 1024d with BGE-M3)
-REMOVE INDEX IF EXISTS turn_vec_idx ON turn;
-REMOVE INDEX IF EXISTS identity_vec_idx ON identity_chunk;
-REMOVE INDEX IF EXISTS concept_vec_idx ON concept;
-REMOVE INDEX IF EXISTS memory_vec_idx ON memory;
-REMOVE INDEX IF EXISTS artifact_vec_idx ON artifact;
--- Clear stale 768d embeddings (incompatible with new 1024d model)
-UPDATE turn SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
-UPDATE identity_chunk SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
-UPDATE concept SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
-UPDATE memory SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
-UPDATE artifact SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
-
 -- ============================================================
 -- PILLAR 1: Agent
 -- ============================================================
@@ -382,3 +369,19 @@ DEFINE FIELD IF NOT EXISTS quality_score ON graduation_event TYPE float;
 DEFINE FIELD IF NOT EXISTS volume_score ON graduation_event TYPE float;
 DEFINE FIELD IF NOT EXISTS stage ON graduation_event TYPE string;
 DEFINE FIELD IF NOT EXISTS created_at ON graduation_event TYPE datetime DEFAULT time::now();
+
+-- ============================================================
+-- MIGRATIONS (must run after table definitions)
+-- ============================================================
+-- Drop old 768d HNSW indexes (now 1024d with BGE-M3)
+REMOVE INDEX IF EXISTS turn_vec_idx ON turn;
+REMOVE INDEX IF EXISTS identity_vec_idx ON identity_chunk;
+REMOVE INDEX IF EXISTS concept_vec_idx ON concept;
+REMOVE INDEX IF EXISTS memory_vec_idx ON memory;
+REMOVE INDEX IF EXISTS artifact_vec_idx ON artifact;
+-- Clear stale 768d embeddings (incompatible with new 1024d model)
+UPDATE turn SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
+UPDATE identity_chunk SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
+UPDATE concept SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
+UPDATE memory SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;
+UPDATE artifact SET embedding = NONE WHERE embedding != NONE AND array::len(embedding) = 768;

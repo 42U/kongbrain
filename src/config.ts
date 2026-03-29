@@ -28,25 +28,28 @@ export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfi
   const surreal = (raw?.surreal ?? {}) as Record<string, unknown>;
   const embedding = (raw?.embedding ?? {}) as Record<string, unknown>;
 
+  // Priority: plugin config > env vars > defaults
   const url =
+    (typeof surreal.url === "string" ? surreal.url : null) ??
     process.env.SURREAL_URL ??
-    (typeof surreal.url === "string" ? surreal.url : "ws://localhost:8042/rpc");
+    "ws://localhost:8042/rpc";
 
   return {
     surreal: {
       url,
       get httpUrl() {
-        const override = process.env.SURREAL_HTTP_URL;
+        const override = (typeof surreal.httpUrl === "string" ? surreal.httpUrl : null) ??
+          process.env.SURREAL_HTTP_URL;
         if (override) return override;
         return this.url
           .replace("ws://", "http://")
           .replace("wss://", "https://")
           .replace("/rpc", "/sql");
       },
-      user: process.env.SURREAL_USER ?? (typeof surreal.user === "string" ? surreal.user : "root"),
-      pass: process.env.SURREAL_PASS ?? (typeof surreal.pass === "string" ? surreal.pass : "root"),
-      ns: process.env.SURREAL_NS ?? (typeof surreal.ns === "string" ? surreal.ns : "kong"),
-      db: process.env.SURREAL_DB ?? (typeof surreal.db === "string" ? surreal.db : "memory"),
+      user: (typeof surreal.user === "string" ? surreal.user : null) ?? process.env.SURREAL_USER ?? "root",
+      pass: (typeof surreal.pass === "string" ? surreal.pass : null) ?? process.env.SURREAL_PASS ?? "root",
+      ns: (typeof surreal.ns === "string" ? surreal.ns : null) ?? process.env.SURREAL_NS ?? "kong",
+      db: (typeof surreal.db === "string" ? surreal.db : null) ?? process.env.SURREAL_DB ?? "memory",
     },
     embedding: {
       modelPath:

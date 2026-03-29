@@ -51,7 +51,8 @@ Pick one:
 ```bash
 # Native install
 curl -sSf https://install.surrealdb.com | sh
-surreal start --user root --pass root --bind 0.0.0.0:8042 file:~/.kongbrain/surreal.db
+export PATH="$HOME/.surrealdb:$PATH"
+surreal start --user root --pass root --bind 0.0.0.0:8042 surrealkv:~/.kongbrain/surreal.db
 ```
 
 ```bash
@@ -59,7 +60,7 @@ surreal start --user root --pass root --bind 0.0.0.0:8042 file:~/.kongbrain/surr
 docker run -d --name surrealdb -p 8042:8000 \
   -v ~/.kongbrain/surreal-data:/data \
   surrealdb/surrealdb:latest start \
-  --user root --pass root file:/data/surreal.db
+  --user root --pass root surrealkv:/data/surreal.db
 ```
 
 ### 3. Install KongBrain
@@ -75,6 +76,7 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 ```json
 {
   "plugins": {
+    "allow": ["kongbrain"],
     "slots": {
       "contextEngine": "kongbrain"
     }
@@ -112,6 +114,7 @@ Full config example:
 ```json
 {
   "plugins": {
+    "allow": ["kongbrain"],
     "slots": {
       "contextEngine": "kongbrain"
     },

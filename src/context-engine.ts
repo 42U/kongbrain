@@ -88,8 +88,8 @@ export class KongBrainContextEngine implements ContextEngine {
     const session = this.state.getOrCreateSession(sessionKey, params.sessionId);
 
     try {
-      const cwd = process.cwd();
-      const projectName = cwd.split("/").pop() || "default";
+      const workspace = this.state.workspaceDir || process.cwd();
+      const projectName = workspace.split("/").pop() || "default";
 
       session.agentId = await store.ensureAgent("kongbrain", "openclaw-default");
       session.projectId = await store.ensureProject(projectName);
@@ -227,9 +227,10 @@ export class KongBrainContextEngine implements ContextEngine {
 
     try {
       const role = (msg as any).role as string;
+      console.log(`[kongbrain:ingest] role=${role} sessionId=${params.sessionId}`);
       if (role === "user" || role === "assistant") {
         const text = extractMessageText(msg);
-        if (!text) return { ingested: false };
+        if (!text) { console.log("[kongbrain:ingest] empty text, skipping"); return { ingested: false }; }
 
         const worthEmbedding = hasSemantic(text);
         let embedding: number[] | null = null;
@@ -247,6 +248,7 @@ export class KongBrainContextEngine implements ContextEngine {
           embedding,
         });
 
+        console.log(`[kongbrain:ingest] turnId=${turnId} role=${role} textLen=${text.length}`);
         if (turnId) {
           await store.relate(turnId, "part_of", session.sessionId)
             .catch(e => swallow.warn("ingest:relate", e));
@@ -336,6 +338,16 @@ export class KongBrainContextEngine implements ContextEngine {
     if (!session) return;
 
     const { store } = this.state;
+
+    // Ingest new messages from this turn (OpenClaw skips ingest() when afterTurn exists)
+    const newMessages = params.messages.slice(params.prePromptMessageCount);
+    for (const msg of newMessages) {
+      await this.ingest({
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        message: msg,
+      }).catch(e => swallow.warn("afterTurn:ingest", e));
+    }
 
     // Snapshot staged retrieval items before evaluateRetrieval clears them
     const stagedSnapshot = getStagedItems();
