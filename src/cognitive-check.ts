@@ -183,12 +183,14 @@ Return ONLY valid JSON.`,
       if (g.learned) {
         // Agent followed the correction unprompted — decay toward background (floor 3)
         await store.queryExec(
-          `UPDATE ${g.id} SET importance = math::max([3, importance - 2])`,
+          `UPDATE type::record($gid) SET importance = math::max([3, importance - 2])`,
+          { gid: g.id },
         ).catch(e => swallow.warn("cognitive-check:correctionDecay", e));
       } else {
         // Correction was relevant but agent ignored it — reinforce (cap 9)
         await store.queryExec(
-          `UPDATE ${g.id} SET importance = math::min([9, importance + 1])`,
+          `UPDATE type::record($gid) SET importance = math::min([9, importance + 1])`,
+          { gid: g.id },
         ).catch(e => swallow.warn("cognitive-check:correctionReinforce", e));
       }
     }
@@ -218,8 +220,8 @@ Return ONLY valid JSON.`,
     const resolvedGrades = result.grades.filter(g => g.resolved && g.id.startsWith("memory:"));
     for (const g of resolvedGrades) {
       await store.queryExec(
-        `UPDATE ${g.id} SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
-        { sid: params.sessionId },
+        `UPDATE type::record($gid) SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
+        { gid: g.id, sid: params.sessionId },
       ).catch(e => swallow.warn("cognitive-check:resolve", e));
     }
   } catch (e) {
@@ -234,7 +236,7 @@ Return ONLY valid JSON.`,
 export function parseCheckResponse(text: string): CognitiveCheckResult | null {
   // Strip markdown fences if present
   const stripped = text.replace(/```(?:json)?\s*/g, "").replace(/```\s*$/g, "");
-  const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+  const jsonMatch = stripped.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) return null;
 
   let raw: any;
@@ -316,8 +318,8 @@ async function applyRetrievalGrades(
       );
       if (row?.[0]?.id) {
         await store.queryExec(
-          `UPDATE ${row[0].id} SET llm_relevance = $score, llm_relevant = $relevant, llm_reason = $reason`,
-          { score: grade.score, relevant: grade.relevant, reason: grade.reason },
+          `UPDATE type::record($rid) SET llm_relevance = $score, llm_relevant = $relevant, llm_reason = $reason`,
+          { rid: String(row[0].id), score: grade.score, relevant: grade.relevant, reason: grade.reason },
         );
       }
       // Feed relevance score into the utility cache — drives WMR provenUtility scoring

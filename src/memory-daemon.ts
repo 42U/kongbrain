@@ -174,8 +174,8 @@ export async function writeExtractionResults(
         if (typeof memId !== "string" || !RECORD_ID_RE.test(memId)) continue;
         counts.resolved++;
         await store.queryExec(
-          `UPDATE ${memId} SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
-          { sid: sessionId },
+          `UPDATE type::record($mid) SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
+          { mid: memId, sid: sessionId },
         ).catch(e => swallow.warn("daemon:resolveMemory", e));
       }
     })());

@@ -94,7 +94,12 @@ function loadWeights(path: string): ACANWeights | null {
     if (!Array.isArray(raw.W_k) || raw.W_k.length !== EMBED_DIM) return null;
     if (!Array.isArray(raw.W_final) || raw.W_final.length !== FEATURE_COUNT) return null;
     if (typeof raw.bias !== "number") return null;
-    if (raw.W_q[0].length !== ATTN_DIM || raw.W_k[0].length !== ATTN_DIM) return null;
+    // Validate inner dimensions — check first, middle, and last rows to catch crafted files
+    const checkIndices = [0, Math.floor(EMBED_DIM / 2), EMBED_DIM - 1];
+    for (const i of checkIndices) {
+      if (!Array.isArray(raw.W_q[i]) || raw.W_q[i].length !== ATTN_DIM) return null;
+      if (!Array.isArray(raw.W_k[i]) || raw.W_k[i].length !== ATTN_DIM) return null;
+    }
     return raw as ACANWeights;
   } catch (e) {
     swallow("acan:loadWeights", e);

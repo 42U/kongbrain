@@ -46,9 +46,11 @@ export function getPrefetchHitRate(): { hits: number; misses: number; attempts: 
 
 function evictStale(): void {
   const now = Date.now();
+  const staleKeys: string[] = [];
   for (const [key, entry] of warmCache) {
-    if (now - entry.timestamp > CACHE_TTL_MS) warmCache.delete(key);
+    if (now - entry.timestamp > CACHE_TTL_MS) staleKeys.push(key);
   }
+  for (const key of staleKeys) warmCache.delete(key);
   while (warmCache.size > MAX_CACHE_SIZE) {
     const oldest = warmCache.keys().next().value;
     if (oldest) warmCache.delete(oldest);

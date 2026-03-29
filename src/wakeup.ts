@@ -297,7 +297,7 @@ Return ONLY valid JSON.`,
 
     const text = response.text;
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return null;
 
     let raw: any;

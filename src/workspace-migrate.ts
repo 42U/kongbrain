@@ -22,7 +22,7 @@
  * copyFile+unlink instead of rename (cross-filesystem safe).
  */
 
-import { readFile, readdir, stat, copyFile, unlink, mkdir, writeFile, rmdir } from "node:fs/promises";
+import { readFile, readdir, stat, lstat, copyFile, unlink, mkdir, writeFile, rmdir } from "node:fs/promises";
 import { join, basename, extname, relative, dirname, sep } from "node:path";
 import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
@@ -376,10 +376,10 @@ async function tryReadFile(absPath: string, rootDir: string): Promise<WorkspaceF
   if (SKIP_FILES.has(name)) return null;
 
   let s;
-  try { s = await stat(absPath); }
+  try { s = await lstat(absPath); }
   catch { return null; }
 
-  if (!s.isFile()) return null;
+  if (s.isSymbolicLink() || !s.isFile()) return null;
   if (s.size === 0 || s.size > MAX_FILE_SIZE) return null;
 
   try {
@@ -524,7 +524,7 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
     }
 
     // Try JSON metadata block if present
-    const jsonMatch = fmBlock.match(/metadata:\s*\n\s*(\{[\s\S]*\})/);
+    const jsonMatch = fmBlock.match(/metadata:\s*\n\s*(\{[\s\S]*?\})/);
     if (jsonMatch) {
       try {
         result.metadata = JSON.parse(jsonMatch[1]);

@@ -80,7 +80,7 @@ export async function extractSkill(
 
     if (text.trim() === "null" || text.trim() === "None") return null;
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]) as ExtractedSkill;
@@ -238,11 +238,11 @@ export async function recordSkillOutcome(
   try {
     const field = success ? "success_count" : "failure_count";
     await store.queryExec(
-      `UPDATE ${skillId} SET
+      `UPDATE type::record($sid) SET
         ${field} += 1,
         avg_duration_ms = (avg_duration_ms * (success_count + failure_count - 1) + $dur) / (success_count + failure_count),
         last_used = time::now()`,
-      { dur: durationMs },
+      { sid: skillId, dur: durationMs },
     );
   } catch (e) { swallow("skills:non-critical", e); }
 }
@@ -289,7 +289,7 @@ export async function graduateCausalToSkills(
       });
 
       const text = resp.text;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = text.match(/\{[\s\S]*?\}/);
       if (!jsonMatch) continue;
 
       let parsed: ExtractedSkill;

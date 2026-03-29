@@ -138,8 +138,8 @@ export async function queryCausalContext(
         store.queryFirst<any>(
           `SELECT id, text, importance, access_count AS accessCount,
                   created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM ${id}->${edge}->? LIMIT 3`,
-          bindings,
+           FROM type::record($nid)->${edge}->? LIMIT 3`,
+          { ...bindings, nid: id },
         ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
       ),
     );
@@ -149,8 +149,8 @@ export async function queryCausalContext(
         store.queryFirst<any>(
           `SELECT id, text, importance, access_count AS accessCount,
                   created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM ${id}<-${edge}<-? LIMIT 3`,
-          bindings,
+           FROM type::record($nid)<-${edge}<-? LIMIT 3`,
+          { ...bindings, nid: id },
         ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
       ),
     );

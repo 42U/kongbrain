@@ -106,14 +106,20 @@ async function processOrphanedSession(
 
   try {
     console.warn(`[deferred] extracting session ${surrealSessionId} (${turns.length} turns, transcript ${transcript.length} chars)`);
-    const response = await complete({
-      system: systemPrompt,
-      messages: [{ role: "user", content: `[TRANSCRIPT]\n${transcript.slice(0, 60000)}` }],
-    });
+    const LLM_CALL_TIMEOUT_MS = 30_000;
+    const response = await Promise.race([
+      complete({
+        system: systemPrompt,
+        messages: [{ role: "user", content: `[TRANSCRIPT]\n${transcript.slice(0, 60000)}` }],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("LLM extraction call timed out")), LLM_CALL_TIMEOUT_MS),
+      ),
+    ]);
 
     const responseText = response.text;
     console.warn(`[deferred] extraction response: ${responseText.length} chars`);
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       let result: Record<string, any>;
       try {
@@ -144,10 +150,15 @@ async function processOrphanedSession(
       .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)
       .join("\n");
 
-    const handoffResponse = await complete({
-      system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
-      messages: [{ role: "user", content: turnSummary }],
-    });
+    const handoffResponse = await Promise.race([
+      complete({
+        system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
+        messages: [{ role: "user", content: turnSummary }],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("LLM handoff call timed out")), 30_000),
+      ),
+    ]);
 
     const handoffText = handoffResponse.text.trim();
     console.warn(`[deferred] handoff response: ${handoffText.length} chars`);

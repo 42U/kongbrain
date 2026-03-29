@@ -457,6 +457,8 @@ export async function reviseSoul(
   store: SurrealStore,
 ): Promise<boolean> {
   if (!store.isAvailable()) return false;
+  const ALLOWED_SECTIONS = new Set(["working_style", "emotional_dimensions", "self_observations", "earned_values"]);
+  if (!ALLOWED_SECTIONS.has(section)) return false;
   try {
     const now = new Date().toISOString();
     await store.queryExec(
@@ -567,7 +569,7 @@ Be honest, not aspirational. Only claim what the data supports.`;
     });
 
     const text = response.text.trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]);
@@ -842,7 +844,7 @@ CURRENT QUALITY:
     });
 
     const text = response.text.trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return false;
 
     const revisions = JSON.parse(jsonMatch[0]);

@@ -97,7 +97,7 @@ export function startMemoryDaemon(
 
     const responseText = response.text;
 
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return;
 
     let result: Record<string, any>;
