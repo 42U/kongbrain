@@ -47,6 +47,9 @@ import { shouldRunCheck, runCognitiveCheck } from "./cognitive-check.js";
 import { checkACANReadiness } from "./acan.js";
 import { predictQueries, prefetchContext } from "./prefetch.js";
 import { runDeferredCleanup } from "./deferred-cleanup.js";
+import { extractSkill } from "./skills.js";
+import { generateReflection } from "./reflection.js";
+import { graduateCausalToSkills } from "./skills.js";
 import { swallow } from "./errors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -430,6 +433,76 @@ export class KongBrainContextEngine implements ContextEngine {
       } catch (e) {
         swallow.warn("afterTurn:daemonBatch", e);
       }
+    }
+
+    // Mid-session cleanup: simulate session_end after ~100k tokens.
+    // OpenClaw exits via Ctrl+C×2 (no async window), so session_end never fires.
+    // Run reflection, skill extraction, and causal graduation periodically.
+    const tokensSinceCleanup = session.cumulativeTokens - session.lastCleanupTokens;
+    if (tokensSinceCleanup >= session.MID_SESSION_CLEANUP_THRESHOLD && typeof this.state.complete === "function") {
+      session.lastCleanupTokens = session.cumulativeTokens;
+
+      // Fire-and-forget: these are non-critical background operations
+      const cleanupOps: Promise<unknown>[] = [];
+
+      // Final daemon flush with full transcript before cleanup
+      if (session.daemon) {
+        cleanupOps.push(
+          store.getSessionTurns(session.sessionId, 50)
+            .then(recentTurns => {
+              const turnData = recentTurns.map(t => ({
+                role: t.role as "user" | "assistant",
+                text: t.text,
+                turnId: (t as any).id,
+              }));
+              session.daemon!.sendTurnBatch(turnData, [...session.pendingThinking], []);
+            })
+            .catch(e => swallow.warn("midCleanup:daemonFlush", e)),
+        );
+      }
+
+      if (session.taskId) {
+        cleanupOps.push(
+          extractSkill(session.sessionId, session.taskId, store, embeddings, this.state.complete)
+            .catch(e => swallow.warn("midCleanup:extractSkill", e)),
+        );
+      }
+
+      cleanupOps.push(
+        generateReflection(session.sessionId, store, embeddings, this.state.complete)
+          .catch(e => swallow.warn("midCleanup:reflection", e)),
+      );
+
+      cleanupOps.push(
+        graduateCausalToSkills(store, embeddings, this.state.complete)
+          .catch(e => swallow.warn("midCleanup:graduateCausal", e)),
+      );
+
+      // Handoff note — snapshot for wakeup even if session continues
+      cleanupOps.push(
+        (async () => {
+          const recentTurns = await store.getSessionTurns(session.sessionId, 15);
+          if (recentTurns.length < 2) return;
+          const turnSummary = recentTurns
+            .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)
+            .join("\n");
+          const handoffResponse = await this.state.complete({
+            system: "Summarize this session for handoff to your next self. What was worked on, what's unfinished, what to remember. 2-3 sentences. Write in first person.",
+            messages: [{ role: "user", content: turnSummary }],
+          });
+          const handoffText = handoffResponse.text.trim();
+          if (handoffText.length > 20) {
+            let embedding: number[] | null = null;
+            if (embeddings.isAvailable()) {
+              try { embedding = await embeddings.embed(handoffText); } catch { /* ok */ }
+            }
+            await store.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
+          }
+        })().catch(e => swallow.warn("midCleanup:handoff", e)),
+      );
+
+      // Don't await — let cleanup run in background
+      Promise.allSettled(cleanupOps).catch(() => {});
     }
   }
 

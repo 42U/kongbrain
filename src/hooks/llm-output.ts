@@ -50,6 +50,7 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
     // Accumulate for daemon batching (only when real tokens present)
     if (inputTokens + outputTokens > 0) {
       session.newContentTokens += inputTokens + outputTokens;
+      session.cumulativeTokens += inputTokens + outputTokens;
     }
 
     // Track accumulated text output for planning gate
@@ -77,6 +78,10 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
           const thinking = block.thinking ?? block.text ?? "";
           if (thinking.length > 50) {
             session.pendingThinking.push(thinking);
+            // Cap to prevent unbounded growth in long sessions
+            if (session.pendingThinking.length > 20) {
+              session.pendingThinking.splice(0, session.pendingThinking.length - 20);
+            }
           }
         }
       }

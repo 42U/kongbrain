@@ -57,6 +57,11 @@ export class SessionState {
   readonly DAEMON_TOKEN_THRESHOLD = 4000;
   lastDaemonFlushTurnCount = 0;
 
+  // Cumulative session token tracking (for mid-session cleanup trigger)
+  cumulativeTokens = 0;
+  lastCleanupTokens = 0;
+  readonly MID_SESSION_CLEANUP_THRESHOLD = 100_000;
+
   // Cleanup tracking
   cleanedUp = false;
 
