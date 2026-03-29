@@ -7,7 +7,7 @@
  * The extraction is I/O-bound (LLM calls + DB writes), not CPU-bound,
  * so in-process execution is fine.
  */
-import { completeSimple as piComplete, getModel as piGetModel } from "@mariozechner/pi-ai";
+import { createRequire } from "node:module";
 import type { SurrealConfig, EmbeddingConfig } from "./config.js";
 import type { TurnData, PriorExtractions } from "./daemon-types.js";
 import { SurrealStore } from "./surreal.js";
@@ -117,9 +117,12 @@ export function startMemoryDaemon(
 
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
-    const model = (piGetModel as any)(provider, modelId);
+    // Resolve pi-ai from openclaw's node_modules
+    const ocRequire = createRequire(require.resolve("openclaw/plugin-sdk/plugin-entry"));
+    const piAi = ocRequire("@mariozechner/pi-ai");
+    const model = piAi.getModel(provider, modelId);
 
-    const response = await piComplete(model, {
+    const response = await piAi.completeSimple(model, {
       systemPrompt,
       messages: [{
         role: "user",

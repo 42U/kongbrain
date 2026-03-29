@@ -7,7 +7,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { completeSimple, getModel } from "@mariozechner/pi-ai";
+import { createRequire } from "node:module";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
@@ -304,15 +304,27 @@ export default definePluginEntry({
       // Build a CompleteFn using pi-ai directly since api.runtime.complete
       // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;
+      // Resolve pi-ai from openclaw's node_modules (not available in kongbrain's)
+      const ocRequire = createRequire(
+        require.resolve("openclaw/plugin-sdk/plugin-entry"),
+      );
+      let piAi: { getModel: any; completeSimple: any } | null = null;
+      try {
+        piAi = ocRequire("@mariozechner/pi-ai");
+      } catch { /* pi-ai not available — complete will throw on use */ }
+
       const complete: CompleteFn = async (params) => {
         // Try runtime.complete first (future-proof for when it ships)
         if (typeof apiRef.runtime?.complete === "function") {
           return apiRef.runtime.complete(params);
         }
+        if (!piAi) {
+          throw new Error("LLM completion not available: @mariozechner/pi-ai not found and runtime.complete missing");
+        }
         // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
         const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
         const modelId = params.model ?? apiRef.runtime.agent.defaults.model;
-        const model = getModel(provider as any, modelId as any);
+        const model = piAi.getModel(provider, modelId);
         if (!model) {
           throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
         }
@@ -331,9 +343,9 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
-        const response = await completeSimple(model, context, {
+        const response = await piAi.completeSimple(model, context, {
           apiKey: auth.apiKey,
-        } as any);
+        });
         let text = "";
         let thinking: string | undefined;
         for (const block of response.content) {
