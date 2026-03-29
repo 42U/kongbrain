@@ -300,15 +300,47 @@ export default definePluginEntry({
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = new EmbeddingService(config.embedding);
-      // api.runtime.complete is a lazy method that may not resolve until after register().
-      // Capture the api reference and dereference .runtime.complete at call time.
+      // Build a CompleteFn using pi-ai directly since api.runtime.complete
+      // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;
       const complete: CompleteFn = async (params) => {
-        const fn = apiRef.runtime?.complete;
-        if (typeof fn !== "function") {
-          throw new Error(`runtime.complete not available (type=${typeof fn})`);
+        // Try runtime.complete first (future-proof for when it ships)
+        if (typeof apiRef.runtime?.complete === "function") {
+          return apiRef.runtime.complete(params);
         }
-        return fn(params);
+        // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
+        const piAi = await import("@mariozechner/pi-ai");
+        const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
+        const modelId = params.model ?? apiRef.runtime.agent.defaults.model;
+        const model = piAi.getModel(provider as any, modelId as any);
+        if (!model) {
+          throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
+        }
+        // Resolve auth via OpenClaw's runtime (handles profiles, env vars, etc.)
+        const cfg = apiRef.runtime.config.loadConfig();
+        const auth = await apiRef.runtime.modelAuth.getApiKeyForModel({ model, cfg });
+        // Build context
+        const now = Date.now();
+        const messages: any[] = params.messages.map(m =>
+          m.role === "user"
+            ? { role: "user", content: m.content, timestamp: now }
+            : { role: "assistant", content: [{ type: "text", text: m.content }],
+                api: model.api, provider: model.provider, model: model.id,
+                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+                stopReason: "stop", timestamp: now }
+        );
+        const context = { systemPrompt: params.system, messages };
+        // Pass apiKey directly in options so the provider can use it
+        const response = await piAi.completeSimple(model, context, {
+          apiKey: auth.apiKey,
+        } as any);
+        let text = "";
+        let thinking: string | undefined;
+        for (const block of response.content) {
+          if (block.type === "text") text += block.text;
+          else if ((block as any).type === "thinking") thinking = (thinking ?? "") + (block as any).thinking;
+        }
+        return { text, thinking, usage: { input: response.usage.input, output: response.usage.output } };
       };
       globalState = new GlobalPluginState(config, store, embeddings, complete);
     }
@@ -343,13 +375,6 @@ export default definePluginEntry({
       seedIdentity(store, embeddings)
         .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
         .catch(e => swallow.warn("factory:seedIdentity", e));
-
-      // Re-capture complete from the api that's in scope during factory execution.
-      // api.runtime.complete may not be available at register() time but is ready by
-      // the time the context engine factory is invoked.
-      if (typeof api.runtime?.complete === "function") {
-        state.complete = (params) => api.runtime.complete(params);
-      }
 
       return new KongBrainContextEngine(state);
     });

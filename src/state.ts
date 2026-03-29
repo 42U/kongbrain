@@ -1,12 +1,32 @@
-import type { PluginCompleteParams, PluginCompleteResult } from "openclaw/plugin-sdk";
 import type { KongBrainConfig } from "./config.js";
 import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import type { AdaptiveConfig } from "./orchestrator.js";
 import type { MemoryDaemon } from "./daemon-manager.js";
 
+/** Parameters for an LLM completion call. */
+export type CompleteParams = {
+  system?: string;
+  messages: { role: "user" | "assistant"; content: string }[];
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  reasoning?: "none" | "low" | "medium" | "high";
+};
+
+/** Result of an LLM completion call. */
+export type CompleteResult = {
+  text: string;
+  thinking?: string;
+  usage?: { input: number; output: number };
+  provider?: string;
+  model?: string;
+  stopReason?: string;
+};
+
 /** Provider-agnostic LLM completion function. */
-export type CompleteFn = (params: PluginCompleteParams) => Promise<PluginCompleteResult>;
+export type CompleteFn = (params: CompleteParams) => Promise<CompleteResult>;
 
 // --- Per-session mutable state ---
 
