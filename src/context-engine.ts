@@ -395,6 +395,7 @@ export class KongBrainContextEngine implements ContextEngine {
     // Flush to daemon when token threshold OR turn count threshold is reached
     const tokenReady = session.newContentTokens >= session.DAEMON_TOKEN_THRESHOLD;
     const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
+    console.warn(`[afterTurn] userTurns=${session.userTurnCount} tokens=${session.newContentTokens} daemon=${!!session.daemon} tokenReady=${tokenReady} turnReady=${turnReady}`);
     if (session.daemon && (tokenReady || turnReady)) {
       try {
         const recentTurns = await store.getSessionTurns(session.sessionId, 20);
