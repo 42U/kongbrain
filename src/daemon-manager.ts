@@ -31,6 +31,8 @@ export interface MemoryDaemon {
   getExtractedTurnCount(): number;
 }
 
+const EXTRACTION_TIMEOUT_MS = 60_000;
+
 export function startMemoryDaemon(
   sharedStore: SurrealStore,
   sharedEmbeddings: EmbeddingService,
@@ -137,7 +139,12 @@ export function startMemoryDaemon(
       const batch = pendingBatch;
       pendingBatch = null;
       try {
-        await runExtraction(batch.turns, batch.thinking, batch.retrievedMemories, batch.priorExtractions);
+        await Promise.race([
+          runExtraction(batch.turns, batch.thinking, batch.retrievedMemories, batch.priorExtractions),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error(`Extraction timed out after ${EXTRACTION_TIMEOUT_MS}ms`)), EXTRACTION_TIMEOUT_MS),
+          ),
+        ]);
       } catch (e) {
         errorCount++;
         swallow.warn("daemon:extraction", e);
