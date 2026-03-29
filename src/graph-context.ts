@@ -837,8 +837,18 @@ async function graphTransformInner(
   const config = session.currentConfig;
   const skipRetrieval = config?.skipRetrieval ?? false;
   const currentIntent = config?.intent ?? "unknown";
-  const vectorSearchLimits = config?.vectorSearchLimits ?? {
+  const baseLimits = config?.vectorSearchLimits ?? {
     turn: 25, identity: 10, concept: 20, memory: 20, artifact: 10,
+  };
+  // Scale search limits with context window — larger windows can use more results
+  const cwScale = Math.max(0.5, Math.min(2.0, contextWindow / 200_000));
+  const vectorSearchLimits = {
+    turn: Math.round((baseLimits.turn ?? 25) * cwScale),
+    identity: baseLimits.identity,  // always load full identity
+    concept: Math.round((baseLimits.concept ?? 20) * cwScale),
+    memory: Math.round((baseLimits.memory ?? 20) * cwScale),
+    artifact: Math.round((baseLimits.artifact ?? 10) * cwScale),
+    monologue: Math.round(8 * cwScale),
   };
   let tokenBudget = Math.min(config?.tokenBudget ?? 6000, budgets.retrieval);
 
