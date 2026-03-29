@@ -23,6 +23,7 @@ import { createAfterToolCallHandler } from "./hooks/after-tool-call.js";
 import { createLlmOutputHandler } from "./hooks/llm-output.js";
 import { startMemoryDaemon } from "./daemon-manager.js";
 import { seedIdentity } from "./identity.js";
+import { seedCognitiveBootstrap } from "./cognitive-bootstrap.js";
 import { synthesizeWakeup } from "./wakeup.js";
 import { extractSkill } from "./skills.js";
 import { generateReflection, setReflectionContextWindow } from "./reflection.js";
@@ -417,6 +418,13 @@ export default definePluginEntry({
       seedIdentity(store, embeddings)
         .then(n => { if (n > 0) logger.info(`Seeded ${n} identity chunks`); })
         .catch(e => swallow.warn("factory:seedIdentity", e));
+
+      seedCognitiveBootstrap(store, embeddings)
+        .then(r => {
+          if (r.identitySeeded > 0 || r.coreSeeded > 0)
+            logger.info(`Cognitive bootstrap: ${r.identitySeeded} identity + ${r.coreSeeded} core`);
+        })
+        .catch(e => swallow.warn("factory:seedBootstrap", e));
 
       return new KongBrainContextEngine(state);
     });

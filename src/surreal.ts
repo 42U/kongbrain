@@ -447,10 +447,8 @@ export class SurrealStore {
     assertRecordId(fromId);
     assertRecordId(toId);
     const safeName = edge.replace(/[^a-zA-Z0-9_]/g, "");
-    await this.queryExec(
-      `RELATE type::record($from)->${safeName}->type::record($to)`,
-      { from: fromId, to: toId },
-    );
+    // Direct interpolation safe: assertRecordId validates format above
+    await this.queryExec(`RELATE ${fromId}->${safeName}->${toId}`);
   }
 
   // ── 5-Pillar entity operations ─────────────────────────────────────────
@@ -504,12 +502,12 @@ export class SurrealStore {
   ): Promise<void> {
     assertRecordId(sessionId);
     await this.queryExec(
-      `UPDATE type::record($sid) SET
+      `UPDATE ${sessionId} SET
         turn_count += 1,
         total_input_tokens += $input,
         total_output_tokens += $output,
         last_active = time::now()`,
-      { sid: sessionId, input: inputTokens, output: outputTokens },
+      { input: inputTokens, output: outputTokens },
     );
   }
 
@@ -517,27 +515,25 @@ export class SurrealStore {
     assertRecordId(sessionId);
     if (summary) {
       await this.queryExec(
-        `UPDATE type::record($sid) SET ended_at = time::now(), summary = $summary`,
-        { sid: sessionId, summary },
+        `UPDATE ${sessionId} SET ended_at = time::now(), summary = $summary`,
+        { summary },
       );
     } else {
-      await this.queryExec(`UPDATE type::record($sid) SET ended_at = time::now()`, { sid: sessionId });
+      await this.queryExec(`UPDATE ${sessionId} SET ended_at = time::now()`);
     }
   }
 
   async markSessionActive(sessionId: string): Promise<void> {
     assertRecordId(sessionId);
     await this.queryExec(
-      `UPDATE type::record($sid) SET cleanup_completed = false, last_active = time::now()`,
-      { sid: sessionId },
+      `UPDATE ${sessionId} SET cleanup_completed = false, last_active = time::now()`,
     );
   }
 
   async markSessionEnded(sessionId: string): Promise<void> {
     assertRecordId(sessionId);
     await this.queryExec(
-      `UPDATE type::record($sid) SET ended_at = time::now(), cleanup_completed = true`,
-      { sid: sessionId },
+      `UPDATE ${sessionId} SET ended_at = time::now(), cleanup_completed = true`,
     );
   }
 
@@ -555,8 +551,7 @@ export class SurrealStore {
     assertRecordId(sessionId);
     assertRecordId(taskId);
     await this.queryExec(
-      `RELATE type::record($from)->session_task->type::record($to)`,
-      { from: sessionId, to: taskId },
+      `RELATE ${sessionId}->session_task->${taskId}`,
     );
   }
 
@@ -564,8 +559,7 @@ export class SurrealStore {
     assertRecordId(taskId);
     assertRecordId(projectId);
     await this.queryExec(
-      `RELATE type::record($from)->task_part_of->type::record($to)`,
-      { from: taskId, to: projectId },
+      `RELATE ${taskId}->task_part_of->${projectId}`,
     );
   }
 
@@ -573,8 +567,7 @@ export class SurrealStore {
     assertRecordId(agentId);
     assertRecordId(taskId);
     await this.queryExec(
-      `RELATE type::record($from)->performed->type::record($to)`,
-      { from: agentId, to: taskId },
+      `RELATE ${agentId}->performed->${taskId}`,
     );
   }
 
@@ -582,8 +575,7 @@ export class SurrealStore {
     assertRecordId(agentId);
     assertRecordId(projectId);
     await this.queryExec(
-      `RELATE type::record($from)->owns->type::record($to)`,
-      { from: agentId, to: projectId },
+      `RELATE ${agentId}->owns->${projectId}`,
     );
   }
 
@@ -625,7 +617,7 @@ export class SurrealStore {
     for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
       const forwardQueries = frontier.flatMap((id) =>
         forwardEdges.map((edge) =>
-          this.queryFirst<any>(`${selectFields} FROM type::record($nid)->${edge}->? LIMIT 3`, { ...bindings, nid: id }).catch(
+          this.queryFirst<any>(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`, bindings).catch(
             (e) => {
               swallow.warn("surreal:graphExpand", e);
               return [] as Record<string, unknown>[];
@@ -636,7 +628,7 @@ export class SurrealStore {
 
       const reverseQueries = frontier.flatMap((id) =>
         reverseEdges.map((edge) =>
-          this.queryFirst<any>(`${selectFields} FROM type::record($nid)<-${edge}<-? LIMIT 3`, { ...bindings, nid: id }).catch(
+          this.queryFirst<any>(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`, bindings).catch(
             (e) => {
               swallow.warn("surreal:graphExpand", e);
               return [] as Record<string, unknown>[];
@@ -687,8 +679,7 @@ export class SurrealStore {
       try {
         assertRecordId(id);
         await this.queryExec(
-          `UPDATE type::record($rid) SET access_count += 1, last_accessed = time::now()`,
-          { rid: id },
+          `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
         );
       } catch (e) {
         swallow.warn("surreal:bumpAccessCounts", e);
@@ -710,8 +701,7 @@ export class SurrealStore {
     if (rows.length > 0) {
       const id = String(rows[0].id);
       await this.queryExec(
-        `UPDATE type::record($cid) SET access_count += 1, last_accessed = time::now()`,
-        { cid: id },
+        `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
       );
       return id;
     }
@@ -768,8 +758,8 @@ export class SurrealStore {
         const existing = dupes[0];
         const newImp = Math.max(existing.importance ?? 0, importance);
         await this.queryExec(
-          `UPDATE type::record($eid) SET access_count += 1, importance = $imp, last_accessed = time::now()`,
-          { eid: String(existing.id), imp: newImp },
+          `UPDATE ${String(existing.id)} SET access_count += 1, importance = $imp, last_accessed = time::now()`,
+          { imp: newImp },
         );
         return String(existing.id);
       }
@@ -844,7 +834,7 @@ export class SurrealStore {
     assertRecordId(id);
     const ALLOWED_FIELDS = new Set(["text", "category", "priority", "tier", "active"]);
     const sets: string[] = [];
-    const bindings: Record<string, unknown> = { _rid: id };
+    const bindings: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(fields)) {
       if (val !== undefined && ALLOWED_FIELDS.has(key)) {
         sets.push(`${key} = $${key}`);
@@ -854,7 +844,7 @@ export class SurrealStore {
     if (sets.length === 0) return false;
     sets.push("updated_at = time::now()");
     const rows = await this.queryFirst<{ id: string }>(
-      `UPDATE type::record($_rid) SET ${sets.join(", ")} RETURN id`,
+      `UPDATE ${id} SET ${sets.join(", ")} RETURN id`,
       bindings,
     );
     return rows.length > 0;
@@ -863,8 +853,7 @@ export class SurrealStore {
   async deleteCoreMemory(id: string): Promise<void> {
     assertRecordId(id);
     await this.queryExec(
-      `UPDATE type::record($rid) SET active = false, updated_at = time::now()`,
-      { rid: id },
+      `UPDATE ${id} SET active = false, updated_at = time::now()`,
     );
   }
 
@@ -1013,9 +1002,9 @@ export class SurrealStore {
 
   async resolveMemory(memoryId: string): Promise<boolean> {
     try {
+      assertRecordId(memoryId);
       await this.queryFirst(
-        `UPDATE type::record($id) SET status = 'resolved', resolved_at = time::now()`,
-        { id: memoryId },
+        `UPDATE ${memoryId} SET status = 'resolved', resolved_at = time::now()`,
       );
       return true;
     } catch (e) {
@@ -1223,10 +1212,10 @@ export class SurrealStore {
           assertRecordId(String(keep));
           assertRecordId(String(drop));
           await this.queryExec(
-            `UPDATE type::record($kid) SET access_count += 1, importance = math::max([importance, $imp])`,
-            { kid: String(keep), imp: dupe.importance },
+            `UPDATE ${String(keep)} SET access_count += 1, importance = math::max([importance, $imp])`,
+            { imp: dupe.importance },
           );
-          await this.queryExec(`DELETE type::record($did)`, { did: String(drop) });
+          await this.queryExec(`DELETE ${String(drop)}`);
           seen.add(String(drop));
           merged++;
         }
@@ -1252,8 +1241,8 @@ export class SurrealStore {
           const emb = await embedFn(mem.text);
           if (!emb) continue;
           await this.queryExec(
-            `UPDATE type::record($mid) SET embedding = $emb`,
-            { mid: String(mem.id), emb },
+            `UPDATE ${String(mem.id)} SET embedding = $emb`,
+            { emb },
           );
 
           const dupes = await this.queryFirst<{
@@ -1283,10 +1272,10 @@ export class SurrealStore {
             assertRecordId(String(keep));
             assertRecordId(String(drop));
             await this.queryExec(
-              `UPDATE type::record($kid) SET access_count += 1, importance = math::max([importance, $imp])`,
-              { kid: String(keep), imp: dupe.importance },
+              `UPDATE ${String(keep)} SET access_count += 1, importance = math::max([importance, $imp])`,
+              { imp: dupe.importance },
             );
-            await this.queryExec(`DELETE type::record($did)`, { did: String(drop) });
+            await this.queryExec(`DELETE ${String(drop)}`);
             seen.add(String(drop));
             merged++;
           }
@@ -1387,8 +1376,8 @@ export class SurrealStore {
   ): Promise<void> {
     assertRecordId(checkpointId);
     await this.queryExec(
-      `UPDATE type::record($cpid) SET status = "complete", memory_id = $mid`,
-      { cpid: checkpointId, mid: memoryId },
+      `UPDATE ${checkpointId} SET status = "complete", memory_id = $mid`,
+      { mid: memoryId },
     );
   }
 
