@@ -429,8 +429,9 @@ export class KongBrainContextEngine implements ContextEngine {
   // ── Dispose ────────────────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
-    // Phase 3: combined extraction, graduation, soul graduation
-    await this.state.shutdown();
+    // No-op: global state (store, embeddings, sessions) is shared across
+    // context engine instances and must NOT be destroyed here. OpenClaw
+    // creates a new context engine per turn and disposes the old one.
   }
 }
 
