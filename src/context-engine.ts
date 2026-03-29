@@ -73,19 +73,22 @@ export class KongBrainContextEngine implements ContextEngine {
   }): Promise<BootstrapResult> {
     const { store, embeddings } = this.state;
 
-    // Run schema if first bootstrap
-    try {
-      const schemaPath = join(__dirname, "..", "src", "schema.surql");
-      let schemaSql: string;
+    // Run schema once per process (idempotent but expensive on every bootstrap)
+    if (!this.state.schemaApplied) {
       try {
-        schemaSql = readFileSync(schemaPath, "utf-8");
-      } catch {
-        // Fallback: try relative to compiled output
-        schemaSql = readFileSync(join(__dirname, "schema.surql"), "utf-8");
+        const schemaPath = join(__dirname, "..", "src", "schema.surql");
+        let schemaSql: string;
+        try {
+          schemaSql = readFileSync(schemaPath, "utf-8");
+        } catch {
+          // Fallback: try relative to compiled output
+          schemaSql = readFileSync(join(__dirname, "schema.surql"), "utf-8");
+        }
+        await store.queryExec(schemaSql);
+        this.state.schemaApplied = true;
+      } catch (e) {
+        swallow.warn("context-engine:schema", e);
       }
-      await store.queryExec(schemaSql);
-    } catch (e) {
-      swallow.warn("context-engine:schema", e);
     }
 
     // 5-pillar graph init

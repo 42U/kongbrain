@@ -76,8 +76,6 @@ DEFINE FIELD IF NOT EXISTS model ON turn TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS usage ON turn TYPE option<object>;
 DEFINE INDEX IF NOT EXISTS turn_vec_idx ON turn FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS turn_session_idx ON turn FIELDS session_id;
--- Migration: backfill created_at from timestamp for existing turns
-UPDATE turn SET created_at = timestamp WHERE created_at IS NONE AND timestamp IS NOT NONE;
 
 -- Identity chunks (agent persona / identity)
 DEFINE TABLE IF NOT EXISTS identity_chunk SCHEMALESS;
@@ -112,7 +110,6 @@ DEFINE FIELD IF NOT EXISTS source ON memory TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS created_at ON memory TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS last_accessed ON memory TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS status ON memory TYPE option<string> DEFAULT "active";
-UPDATE memory SET status = "active" WHERE status IS NONE;
 DEFINE FIELD IF NOT EXISTS resolved_at ON memory TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS resolved_by ON memory TYPE option<string>;
 DEFINE INDEX IF NOT EXISTS memory_vec_idx ON memory FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;

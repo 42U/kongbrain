@@ -106,6 +106,7 @@ export class GlobalPluginState {
   complete: CompleteFn;
   workspaceDir?: string;
   enqueueSystemEvent?: EnqueueSystemEventFn;
+  schemaApplied = false;
   private sessions = new Map<string, SessionState>();
 
   constructor(
