@@ -30,9 +30,16 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
     const session = state.getSession(sessionKey);
     if (!session) return;
 
-    // Extract token counts (0 if provider didn't report usage)
-    const inputTokens = event.usage?.input ?? 0;
-    const outputTokens = event.usage?.output ?? 0;
+    // Measure assistant text output (used for token estimation and planning gate)
+    const textLen = event.assistantTexts.reduce((s, t) => s + t.length, 0);
+
+    // Extract token counts — fall back to text-length estimate when provider
+    // doesn't report usage (OpenClaw often passes 0 or undefined)
+    let inputTokens = event.usage?.input ?? 0;
+    let outputTokens = event.usage?.output ?? 0;
+    if (inputTokens + outputTokens === 0 && textLen > 0) {
+      outputTokens = Math.ceil(textLen / 4); // ~4 chars per token
+    }
 
     // Always update session stats — turn_count must increment even without usage data
     if (session.surrealSessionId) {
@@ -47,14 +54,11 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
       }
     }
 
-    // Accumulate for daemon batching (only when real tokens present)
-    if (inputTokens + outputTokens > 0) {
-      session.newContentTokens += inputTokens + outputTokens;
-      session.cumulativeTokens += inputTokens + outputTokens;
-    }
+    // Accumulate for daemon batching and mid-session cleanup
+    session.newContentTokens += inputTokens + outputTokens;
+    session.cumulativeTokens += inputTokens + outputTokens;
 
     // Track accumulated text output for planning gate
-    const textLen = event.assistantTexts.reduce((s, t) => s + t.length, 0);
     session.turnTextLength += textLen;
 
     if (textLen > 50) {
