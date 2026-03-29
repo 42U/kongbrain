@@ -7,10 +7,9 @@
  * The extraction is I/O-bound (LLM calls + DB writes), not CPU-bound,
  * so in-process execution is fine.
  */
-import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
 import type { SurrealConfig, EmbeddingConfig } from "./config.js";
 import type { TurnData, PriorExtractions } from "./daemon-types.js";
+import type { CompleteFn } from "./state.js";
 import { SurrealStore } from "./surreal.js";
 import { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
@@ -37,7 +36,7 @@ export function startMemoryDaemon(
   surrealConfig: SurrealConfig,
   embeddingConfig: EmbeddingConfig,
   sessionId: string,
-  llmConfig?: { provider?: string; model?: string },
+  complete: CompleteFn,
 ): MemoryDaemon {
   // Daemon-local DB and embedding instances (separate connections)
   let store: SurrealStore | null = null;
@@ -81,13 +80,6 @@ export function startMemoryDaemon(
     if (!store || !embeddings) return;
     if (turns.length < 2) return;
 
-    const provider = llmConfig?.provider;
-    const modelId = llmConfig?.model;
-    if (!provider || !modelId) {
-      swallow.warn("daemon:extraction", new Error("Missing llmProvider/llmModel"));
-      return;
-    }
-
     // Merge incoming prior state
     if (incomingPrior) {
       for (const name of incomingPrior.conceptNames) {
@@ -118,33 +110,12 @@ export function startMemoryDaemon(
 
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
-    // Resolve pi-ai from openclaw's node_modules (ESM-only, needs import())
-    let piAiPath: string | null = null;
-    let dir = dirname(process.argv[1] || __filename);
-    for (let i = 0; i < 10; i++) {
-      const candidate = join(dir, "node_modules", "@mariozechner", "pi-ai", "dist", "index.js");
-      if (existsSync(candidate)) { piAiPath = candidate; break; }
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    if (!piAiPath) throw new Error("@mariozechner/pi-ai not found in openclaw's node_modules");
-    const piAi = await import(piAiPath);
-    const model = piAi.getModel(provider, modelId);
-
-    const response = await piAi.completeSimple(model, {
-      systemPrompt,
-      messages: [{
-        role: "user",
-        timestamp: Date.now(),
-        content: sections.join("\n\n"),
-      }],
+    const response = await complete({
+      system: systemPrompt,
+      messages: [{ role: "user", content: sections.join("\n\n") }],
     });
 
-    const responseText = response.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
-      .join("");
+    const responseText = response.text;
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return;

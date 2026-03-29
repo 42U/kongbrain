@@ -23,7 +23,7 @@ import { createAfterToolCallHandler } from "./hooks/after-tool-call.js";
 import { createLlmOutputHandler } from "./hooks/llm-output.js";
 import { startMemoryDaemon } from "./daemon-manager.js";
 import { seedIdentity } from "./identity.js";
-import { synthesizeWakeup, synthesizeStartupCognition } from "./wakeup.js";
+import { synthesizeWakeup } from "./wakeup.js";
 import { extractSkill } from "./skills.js";
 import { generateReflection, setReflectionContextWindow } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
@@ -462,7 +462,7 @@ export default definePluginEntry({
           config.surreal,
           config.embedding,
           session.sessionId,
-          { provider: api.runtime.agent.defaults.provider, model: api.runtime.agent.defaults.model },
+          globalState!.complete,
         );
       } catch (e) {
         swallow.warn("index:startDaemon", e);
@@ -486,20 +486,10 @@ export default definePluginEntry({
       detectGraduationEvent(globalState!.store, session, globalState!)
         .catch(e => swallow("index:graduationDetect", e));
 
-      // Synthesize wakeup briefing (background, non-blocking)
-      // The briefing is stored and later injected via assemble()'s systemPromptAddition
-      synthesizeWakeup(globalState!.store, globalState!.complete, session.sessionId, globalState!.workspaceDir)
-        .then(briefing => {
-          if (briefing) (session as any)._wakeupBriefing = briefing;
-        })
-        .catch(e => swallow.warn("index:wakeup", e));
-
-      // Startup cognition (background)
-      synthesizeStartupCognition(globalState!.store, globalState!.complete)
-        .then(cognition => {
-          if (cognition) (session as any)._startupCognition = cognition;
-        })
-        .catch(e => swallow.warn("index:startupCognition", e));
+      // Synthesize wakeup briefing — store the promise so assemble() can await it
+      (session as any)._wakeupPromise = synthesizeWakeup(
+        globalState!.store, globalState!.complete, session.sessionId, globalState!.workspaceDir,
+      ).catch(e => { swallow.warn("index:wakeup", e); return null; });
 
       // Deferred cleanup: extract knowledge from orphaned sessions (background)
       runDeferredCleanup(globalState!.store, globalState!.embeddings, globalState!.complete)

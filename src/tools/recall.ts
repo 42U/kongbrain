@@ -41,7 +41,7 @@ export function createRecallToolDef(state: GlobalPluginState, session: SessionSt
         const scope = params.scope ?? "all";
 
         if (scope === "skills") {
-          const skills = await findRelevantSkills(queryVec, maxResults);
+          const skills = await findRelevantSkills(queryVec, maxResults, store);
           if (skills.length === 0) {
             return { content: [{ type: "text" as const, text: `No skills found matching "${params.query}".` }], details: null };
           }

@@ -36,7 +36,6 @@ export interface GraduationSignals {
   reflections: number;
   causalChains: number;
   concepts: number;
-  memoryCompactions: number;
   monologues: number;
   spanDays: number;
 }
@@ -91,7 +90,6 @@ const THRESHOLDS: GraduationSignals = {
   reflections: 10,
   causalChains: 5,
   concepts: 30,
-  memoryCompactions: 5,
   monologues: 5,
   spanDays: 3,
 };
@@ -104,17 +102,16 @@ const QUALITY_GATE = 0.6;
 async function getGraduationSignals(store: SurrealStore): Promise<GraduationSignals> {
   const defaults: GraduationSignals = {
     sessions: 0, reflections: 0, causalChains: 0,
-    concepts: 0, memoryCompactions: 0, monologues: 0, spanDays: 0,
+    concepts: 0, monologues: 0, spanDays: 0,
   };
   if (!store.isAvailable()) return defaults;
 
   try {
-    const [sessions, reflections, causal, concepts, compactions, monologues, span] = await Promise.all([
+    const [sessions, reflections, causal, concepts, monologues, span] = await Promise.all([
       store.queryFirst<{ count: number }>(`SELECT count() AS count FROM session GROUP ALL`).catch(() => []),
       store.queryFirst<{ count: number }>(`SELECT count() AS count FROM reflection GROUP ALL`).catch(() => []),
       store.queryFirst<{ count: number }>(`SELECT count() AS count FROM causal_chain GROUP ALL`).catch(() => []),
       store.queryFirst<{ count: number }>(`SELECT count() AS count FROM concept GROUP ALL`).catch(() => []),
-      store.queryFirst<{ count: number }>(`SELECT count() AS count FROM compaction_checkpoint WHERE status = "complete" GROUP ALL`).catch(() => []),
       store.queryFirst<{ count: number }>(`SELECT count() AS count FROM monologue GROUP ALL`).catch(() => []),
       store.queryFirst<{ earliest: string }>(`SELECT started_at AS earliest FROM session ORDER BY started_at ASC LIMIT 1`).catch(() => []),
     ]);
@@ -130,7 +127,6 @@ async function getGraduationSignals(store: SurrealStore): Promise<GraduationSign
       reflections: (reflections as { count: number }[])[0]?.count ?? 0,
       causalChains: (causal as { count: number }[])[0]?.count ?? 0,
       concepts: (concepts as { count: number }[])[0]?.count ?? 0,
-      memoryCompactions: (compactions as { count: number }[])[0]?.count ?? 0,
       monologues: (monologues as { count: number }[])[0]?.count ?? 0,
       spanDays,
     };
@@ -358,7 +354,6 @@ function getSuggestion(key: keyof GraduationSignals, current: number, threshold:
     case "reflections": return `${remaining} more reflection(s) needed. These are generated automatically when sessions have performance issues.`;
     case "causalChains": return `${remaining} more causal chain(s) needed. These form when the agent corrects mistakes during tool usage.`;
     case "concepts": return `${remaining} more concept(s) needed. Concepts are extracted from conversation topics and domain vocabulary.`;
-    case "memoryCompactions": return `${remaining} more compaction(s) needed. These happen during longer sessions with substantial context.`;
     case "monologues": return `${remaining} more monologue(s) needed. Inner monologue triggers during cognitive checks.`;
     case "spanDays": return `${remaining} more day(s) of history needed. The agent needs time-spread experience, not just volume.`;
   }

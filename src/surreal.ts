@@ -924,7 +924,8 @@ export class SurrealStore {
         timestamp: string;
       }>(
         `SELECT role, text, tool_name, timestamp FROM turn
-         WHERE session_id = $sid AND text != NONE AND text != ""
+         WHERE id IN (SELECT VALUE in FROM part_of WHERE out = $sid)
+           AND text != NONE AND text != ""
          ORDER BY timestamp DESC LIMIT $lim`,
         { sid: prevSessionId, lim: limit },
       );

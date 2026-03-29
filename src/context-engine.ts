@@ -156,11 +156,12 @@ export class KongBrainContextEngine implements ContextEngine {
     // Build system prompt additions
     const additions: string[] = [];
 
-    // Wakeup briefing (synthesized at session start)
-    const wakeupBriefing = (session as any)._wakeupBriefing as string | undefined;
-    if (wakeupBriefing) {
-      additions.push(wakeupBriefing);
-      delete (session as any)._wakeupBriefing; // Only inject once
+    // Wakeup briefing (synthesized at session start, may still be in-flight)
+    const wakeupPromise = (session as any)._wakeupPromise as Promise<string | null> | undefined;
+    if (wakeupPromise) {
+      const wakeupBriefing = await wakeupPromise;
+      delete (session as any)._wakeupPromise; // Only inject once
+      if (wakeupBriefing) additions.push(wakeupBriefing);
     }
 
     // Graduation celebration — tell the agent it just graduated so it can share with the user
@@ -387,11 +388,6 @@ export class KongBrainContextEngine implements ContextEngine {
         })),
         recentTurns,
       }, session, store, this.state.complete).catch(e => swallow.warn("afterTurn:cognitiveCheck", e));
-    }
-
-    // Daemon batching — accumulate content tokens and flush when threshold met
-    if (session.lastAssistantText && hasSemantic(session.lastAssistantText)) {
-      session.newContentTokens += Math.ceil(session.lastAssistantText.length / 4);
     }
 
     // Flush to daemon when token threshold OR turn count threshold is reached
