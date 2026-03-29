@@ -271,7 +271,7 @@ Triggers at session end when metrics indicate problems:
 | Steering candidates | any detected |
 | Context waste | > 0.5% of context window |
 
-Opus generates a 2-4 sentence reflection: root cause, error pattern, what to do differently. Stored with importance 7.0, deduped at 0.85 cosine similarity.
+The LLM generates a 2-4 sentence reflection: root cause, error pattern, what to do differently. Stored with importance 7.0, deduped at 0.85 cosine similarity.
 
 </details>
 
@@ -298,7 +298,7 @@ Context Injection ─ Vector search -> graph expand -> 6-signal scoring -> budge
     |                  Scores: similarity, recency, importance, access, neighbor, utility
     |                  Budget: 21% of context window reserved for retrieval
     v
-Agent Loop ──────── Claude (Opus/Sonnet/Haiku) + tool execution
+Agent Loop ──────── LLM + tool execution
     |                  Planning gate: announces plan before touching tools
     |                  Smart truncation: preserves tail of large tool outputs
     v
@@ -308,7 +308,7 @@ Turn Storage ────── Every message embedded + stored + linked via gra
 Quality Eval ────── Measures retrieval utilization (text overlap, trigrams, unigrams)
     |                  Tracks tool success, context waste, feeds ACAN training
     v
-Memory Daemon ───── Worker thread extracts 9 knowledge types via Sonnet:
+Memory Daemon ───── Worker thread extracts 9 knowledge types via LLM:
     |                  causal chains, monologues, concepts, corrections,
     |                  preferences, artifacts, decisions, skills, resolved memories
     v
@@ -324,7 +324,7 @@ At session start, a wake-up briefing is synthesized from the handoff, recent mon
 <details>
 <summary><strong>Memory Daemon</strong>: background knowledge extraction</summary>
 
-A worker thread running throughout the session. Batches turns every ~12K tokens, calls Sonnet to extract:
+A worker thread running throughout the session. Batches turns every ~12K tokens, calls the configured LLM to extract:
 
 - **Causal chains**: trigger/outcome sequences with success/confidence
 - **Monologue traces**: thinking blocks that reveal problem-solving approach

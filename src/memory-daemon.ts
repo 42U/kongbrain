@@ -185,8 +185,11 @@ async function processExtraction(msg: DaemonMessage & { type: "turn_batch" }): P
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
     const { completeSimple, getModel } = await import("@mariozechner/pi-ai");
-    const provider = config.llmProvider ?? "anthropic";
-    const modelId = config.llmModel ?? "claude-opus-4-6";
+    const provider = config.llmProvider;
+    const modelId = config.llmModel;
+    if (!provider || !modelId) {
+      throw new Error("Memory daemon requires llmProvider and llmModel from host config");
+    }
     // getModel is heavily typed for known providers; cast needed for runtime-configured values
     const model = (getModel as any)(provider, modelId);
 

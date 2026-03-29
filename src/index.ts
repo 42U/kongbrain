@@ -92,7 +92,7 @@ async function runSessionCleanup(
     .catch(e => { swallow.warn("cleanup:soulGraduation", e); return null; });
   endOps.push(graduationPromise);
 
-  // The session-end Opus call is critical and needs the full 45s.
+  // The session-end LLM call is critical and needs the full 45s.
   await Promise.race([
     Promise.allSettled(endOps),
     new Promise(resolve => setTimeout(resolve, 45_000)),
@@ -391,7 +391,7 @@ export default definePluginEntry({
     });
 
     // OpenClaw's session_end is fire-and-forget and doesn't fire on CLI exit.
-    // Register a process exit handler to ensure the critical Opus extraction
+    // Register a process exit handler to ensure the critical extraction
     // completes even when the user exits with Ctrl+D or /exit.
     // Clean up previous listeners first (register() can be called multiple times).
     if (registeredExitHandler) {

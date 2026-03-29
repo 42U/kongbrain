@@ -3,7 +3,7 @@
  *
  * At session end, reviews own performance: tool failures, runaway detections,
  * low retrieval utilization, wasted tokens. If problems exceeded thresholds,
- * generates a structured reflection via Opus, stored as high-importance memory.
+ * generates a structured reflection via the configured LLM, stored as high-importance memory.
  * Retrieved when similar situations arise in future sessions.
  *
  * Ported from kongbrain — takes SurrealStore/EmbeddingService as params.
