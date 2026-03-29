@@ -119,7 +119,7 @@ describe("parsePluginConfig", () => {
   it("returns default thresholds with no input", () => {
     const config = parsePluginConfig();
     expect(config.thresholds.daemonTokenThreshold).toBe(4000);
-    expect(config.thresholds.midSessionCleanupThreshold).toBe(100_000);
+    expect(config.thresholds.midSessionCleanupThreshold).toBe(25_000);
     expect(config.thresholds.extractionTimeoutMs).toBe(60_000);
     expect(config.thresholds.maxPendingThinking).toBe(20);
   });

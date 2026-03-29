@@ -129,6 +129,11 @@ async function processOrphanedSession(
           result = JSON.parse(jsonMatch[0].replace(/,\s*([}\]])/g, "$1"));
         } catch { result = {}; }
       }
+      // Strip prototype pollution keys from LLM-generated JSON
+      const BANNED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+      for (const key of Object.keys(result)) {
+        if (BANNED_KEYS.has(key)) delete (result as any)[key];
+      }
 
       const keys = Object.keys(result);
       console.warn(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);

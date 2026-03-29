@@ -6,7 +6,7 @@
  * so the next session's wakeup has context even before deferred
  * extraction runs.
  */
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 
 const HANDOFF_FILENAME = ".kongbrain-handoff.json";
@@ -29,7 +29,7 @@ export function writeHandoffFileSync(
 ): void {
   try {
     const path = join(workspaceDir, HANDOFF_FILENAME);
-    writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+    writeFileSync(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 0o600 });
   } catch {
     // Best-effort — sync exit handler, can't log async
   }
@@ -46,7 +46,19 @@ export function readAndDeleteHandoffFile(
   try {
     const raw = readFileSync(path, "utf-8");
     unlinkSync(path);
-    return JSON.parse(raw) as HandoffFileData;
+    const parsed = JSON.parse(raw);
+    // Runtime validation — reject prototype pollution and malformed data
+    if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    if ("__proto__" in parsed || "constructor" in parsed) return null;
+    const data: HandoffFileData = {
+      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId.slice(0, 200) : "",
+      timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp.slice(0, 50) : "",
+      userTurnCount: typeof parsed.userTurnCount === "number" ? parsed.userTurnCount : 0,
+      lastUserText: typeof parsed.lastUserText === "string" ? parsed.lastUserText.slice(0, 500) : "",
+      lastAssistantText: typeof parsed.lastAssistantText === "string" ? parsed.lastAssistantText.slice(0, 500) : "",
+      unextractedTokens: typeof parsed.unextractedTokens === "number" ? parsed.unextractedTokens : 0,
+    };
+    return data;
   } catch {
     // Corrupted or deleted between check and read
     try { unlinkSync(path); } catch { /* ignore */ }
