@@ -113,10 +113,11 @@ export class SurrealStore {
   }
 
   async initialize(): Promise<void> {
-    // Only connect once — subsequent calls are no-ops if already connected.
+    // Only connect once — subsequent calls are no-ops.
     // This prevents register()/factory re-invocations from disrupting
     // in-flight operations (deferred cleanup, daemon extraction).
-    if (this.initialized && this.db.isConnected) return;
+    // Don't check isConnected — ensureConnected() handles reconnection.
+    if (this.initialized) return;
     await this.db.connect(this.config.url, {
       namespace: this.config.ns,
       database: this.config.db,

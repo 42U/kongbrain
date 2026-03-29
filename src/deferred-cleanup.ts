@@ -15,11 +15,29 @@ import { buildSystemPrompt, buildTranscript, writeExtractionResults } from "./me
 import type { PriorExtractions } from "./daemon-types.js";
 import { swallow } from "./errors.js";
 
+// Module-level lock prevents concurrent/duplicate runs from multiple
+// register() → afterTurn() invocations.
+let running = false;
+
 /**
  * Find and process orphaned sessions. Runs with a 30s total timeout.
  * Fire-and-forget from session_start — does not block the new session.
  */
 export async function runDeferredCleanup(
+  store: SurrealStore,
+  embeddings: EmbeddingService,
+  complete: CompleteFn,
+): Promise<number> {
+  if (running) return 0;
+  running = true;
+  try {
+    return await runDeferredCleanupInner(store, embeddings, complete);
+  } finally {
+    running = false;
+  }
+}
+
+async function runDeferredCleanupInner(
   store: SurrealStore,
   embeddings: EmbeddingService,
   complete: CompleteFn,
