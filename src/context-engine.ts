@@ -45,6 +45,7 @@ import { evaluateRetrieval, getStagedItems } from "./retrieval-quality.js";
 import { shouldRunCheck, runCognitiveCheck } from "./cognitive-check.js";
 import { checkACANReadiness } from "./acan.js";
 import { predictQueries, prefetchContext } from "./prefetch.js";
+import { runDeferredCleanup } from "./deferred-cleanup.js";
 import { swallow } from "./errors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -122,6 +123,7 @@ export class KongBrainContextEngine implements ContextEngine {
       store.consolidateMemories((text) => embeddings.embed(text)),
       store.garbageCollectMemories(),
       checkACANReadiness(store),
+      runDeferredCleanup(store, embeddings, this.state.complete),
     ]).catch(e => swallow.warn("bootstrap:maintenance", e));
 
     return { bootstrapped: true };

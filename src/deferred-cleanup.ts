@@ -26,7 +26,7 @@ export async function runDeferredCleanup(
 ): Promise<number> {
   if (!store.isAvailable()) return 0;
 
-  const orphaned = await store.getOrphanedSessions(3).catch(() => []);
+  const orphaned = await store.getOrphanedSessions(10).catch(() => []);
   if (orphaned.length === 0) return 0;
 
   let processed = 0;
@@ -57,18 +57,10 @@ async function processOrphanedSession(
   embeddings: EmbeddingService,
   complete: CompleteFn,
 ): Promise<void> {
-  // Find the OpenClaw session ID from turns stored in this session
-  // (turns use the OpenClaw session_id, not the surreal record ID)
-  const sessionTurns = await store.queryFirst<{ session_id: string }>(
-    `SELECT session_id FROM turn WHERE session_id != NONE ORDER BY created_at DESC LIMIT 1`,
-  ).catch(() => []);
-
-  // Load turns for extraction
-  // We need to find turns associated with this DB session via the part_of edge
+  // Load turns for extraction via part_of edges (turn->part_of->session)
   const turns = await store.queryFirst<{ role: string; text: string; tool_name?: string }>(
-    `SELECT role, text, tool_name FROM turn
-     WHERE session_id IN (SELECT VALUE out FROM part_of WHERE in = $sid)
-        OR session_id = $sid
+    `SELECT role, text, tool_name, created_at FROM turn
+     WHERE id IN (SELECT VALUE in FROM part_of WHERE out = $sid)
      ORDER BY created_at ASC LIMIT 50`,
     { sid: surrealSessionId },
   ).catch(() => []);
