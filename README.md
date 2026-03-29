@@ -48,22 +48,33 @@ npm install -g openclaw
 
 ### 2. Start SurrealDB
 
-Pick one:
+Install SurrealDB via your platform's package manager (see [surrealdb.com/install](https://surrealdb.com/docs/surrealdb/installation)):
 
 ```bash
-# Native install
+# macOS
+brew install surrealdb/tap/surreal
+
+# Linux (Debian/Ubuntu)
 curl -sSf https://install.surrealdb.com | sh
 export PATH="$HOME/.surrealdb:$PATH"
-surreal start --user root --pass root --bind 0.0.0.0:8042 surrealkv:~/.kongbrain/surreal.db
 ```
 
+Then start it locally — **change the credentials before use**:
+
 ```bash
-# Docker
-docker run -d --name surrealdb -p 8042:8000 \
+surreal start --user youruser --pass yourpass --bind 127.0.0.1:8042 surrealkv:~/.kongbrain/surreal.db
+```
+
+Or with Docker:
+
+```bash
+docker run -d --name surrealdb -p 127.0.0.1:8042:8000 \
   -v ~/.kongbrain/surreal-data:/data \
   surrealdb/surrealdb:latest start \
-  --user root --pass root surrealkv:/data/surreal.db
+  --user youruser --pass yourpass surrealkv:/data/surreal.db
 ```
+
+> **Security note:** Always bind to `127.0.0.1` (not `0.0.0.0`) unless you need remote access. Never use default credentials in production.
 
 ### 3. Install KongBrain
 
@@ -100,7 +111,7 @@ openclaw tui
 
 That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
 
-The BGE-M3 embedding model (~420MB) downloads automatically on first startup. All database tables and indexes are created automatically on first run. No manual setup required.
+The BGE-M3 embedding model (~420MB) downloads automatically on first startup from [Hugging Face](https://huggingface.co/BAAI/bge-m3). All database tables and indexes are created automatically on first run. No manual setup required.
 
 <details>
 <summary><strong>Configuration Options</strong></summary>
@@ -109,9 +120,9 @@ All options have sensible defaults. Override via plugin config or environment va
 
 | Option | Env Var | Default |
 |--------|---------|---------|
-| `surreal.url` | `SURREAL_URL` | `ws://localhost:8042/rpc` |
-| `surreal.user` | `SURREAL_USER` | `root` |
-| `surreal.pass` | `SURREAL_PASS` | `root` |
+| `surreal.url` | `SURREAL_URL` | `ws://127.0.0.1:8042/rpc` |
+| `surreal.user` | `SURREAL_USER` | (required) |
+| `surreal.pass` | `SURREAL_PASS` | (required) |
 | `surreal.ns` | `SURREAL_NS` | `kong` |
 | `surreal.db` | `SURREAL_DB` | `memory` |
 | `embedding.modelPath` | `KONGBRAIN_EMBEDDING_MODEL` | Auto-downloaded BGE-M3 Q4_K_M |
@@ -130,9 +141,9 @@ Full config example:
       "kongbrain": {
         "config": {
           "surreal": {
-            "url": "ws://localhost:8042/rpc",
-            "user": "root",
-            "pass": "root",
+            "url": "ws://127.0.0.1:8042/rpc",
+            "user": "youruser",
+            "pass": "yourpass",
             "ns": "kong",
             "db": "memory"
           }
