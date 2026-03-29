@@ -118,7 +118,7 @@ export function startMemoryDaemon(
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
     // Resolve pi-ai from openclaw's node_modules
-    const ocRequire = createRequire(require.resolve("openclaw/plugin-sdk/plugin-entry"));
+    const ocRequire = createRequire(process.argv[1] || __filename);
     const piAi = ocRequire("@mariozechner/pi-ai");
     const model = piAi.getModel(provider, modelId);
 

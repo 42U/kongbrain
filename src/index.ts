@@ -304,12 +304,12 @@ export default definePluginEntry({
       // Build a CompleteFn using pi-ai directly since api.runtime.complete
       // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;
-      // Resolve pi-ai from openclaw's node_modules (not available in kongbrain's)
-      const ocRequire = createRequire(
-        require.resolve("openclaw/plugin-sdk/plugin-entry"),
-      );
+      // Resolve pi-ai from openclaw's node_modules (not in kongbrain's).
+      // process.argv[1] points to openclaw's entry script, so createRequire
+      // from there can find openclaw's dependencies.
       let piAi: { getModel: any; completeSimple: any } | null = null;
       try {
+        const ocRequire = createRequire(process.argv[1] || __filename);
         piAi = ocRequire("@mariozechner/pi-ai");
       } catch { /* pi-ai not available — complete will throw on use */ }
 
