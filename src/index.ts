@@ -7,6 +7,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { completeSimple, getModel } from "@mariozechner/pi-ai";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
@@ -309,10 +310,9 @@ export default definePluginEntry({
           return apiRef.runtime.complete(params);
         }
         // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
-        const piAi = await import("@mariozechner/pi-ai");
         const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
         const modelId = params.model ?? apiRef.runtime.agent.defaults.model;
-        const model = piAi.getModel(provider as any, modelId as any);
+        const model = getModel(provider as any, modelId as any);
         if (!model) {
           throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
         }
@@ -331,7 +331,7 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
-        const response = await piAi.completeSimple(model, context, {
+        const response = await completeSimple(model, context, {
           apiKey: auth.apiKey,
         } as any);
         let text = "";

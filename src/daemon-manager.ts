@@ -7,6 +7,7 @@
  * The extraction is I/O-bound (LLM calls + DB writes), not CPU-bound,
  * so in-process execution is fine.
  */
+import { completeSimple as piComplete, getModel as piGetModel } from "@mariozechner/pi-ai";
 import type { SurrealConfig, EmbeddingConfig } from "./config.js";
 import type { TurnData, PriorExtractions } from "./daemon-types.js";
 import { SurrealStore } from "./surreal.js";
@@ -116,10 +117,9 @@ export function startMemoryDaemon(
 
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
-    const { completeSimple, getModel } = await import("@mariozechner/pi-ai");
-    const model = (getModel as any)(provider, modelId);
+    const model = (piGetModel as any)(provider, modelId);
 
-    const response = await completeSimple(model, {
+    const response = await piComplete(model, {
       systemPrompt,
       messages: [{
         role: "user",
