@@ -11,7 +11,6 @@ export class EmbeddingService {
   private model: LlamaModel | null = null;
   private ctx: LlamaEmbeddingContext | null = null;
   private ready = false;
-  private embedCallCount = 0;
 
   constructor(private readonly config: EmbeddingConfig) {}
 
@@ -40,7 +39,6 @@ export class EmbeddingService {
 
   async embed(text: string): Promise<number[]> {
     if (!this.ready || !this.ctx) throw new Error("Embeddings not initialized");
-    this.embedCallCount++;
     const result = await this.ctx.getEmbeddingFor(text);
     return Array.from(result.vector);
   }
@@ -56,16 +54,6 @@ export class EmbeddingService {
 
   isAvailable(): boolean {
     return this.ready;
-  }
-
-  drainEmbedCallCount(): number {
-    const count = this.embedCallCount;
-    this.embedCallCount = 0;
-    return count;
-  }
-
-  getEmbedCallCount(): number {
-    return this.embedCallCount;
   }
 
   async dispose(): Promise<void> {

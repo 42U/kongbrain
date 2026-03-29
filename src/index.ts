@@ -476,7 +476,7 @@ export default definePluginEntry({
               (session as any)._hasMigratableFiles = true;
             }
           })
-          .catch(e => swallow("index:migrationCheck", e));
+          .catch(e => swallow.warn("index:migrationCheck", e));
       }
 
       // Set reflection context window from config

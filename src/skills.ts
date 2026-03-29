@@ -154,7 +154,7 @@ export async function supersedeOldSkills(
         );
       }
     }
-  } catch (e) { swallow("skills:supersedeOld", e); }
+  } catch (e) { swallow.warn("skills:supersedeOld", e); }
 }
 
 // --- Skill Retrieval ---

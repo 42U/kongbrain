@@ -8,7 +8,6 @@ function mockStore(signals: Partial<{
   reflections: number;
   causalChains: number;
   concepts: number;
-  compactions: number;
   monologues: number;
   spanDays: number;
   // Quality signals
@@ -31,7 +30,6 @@ function mockStore(signals: Partial<{
       if (sql.includes("FROM reflection GROUP ALL") && !sql.includes("severity")) return [{ count: signals.reflections ?? 0 }];
       if (sql.includes("FROM causal_chain GROUP ALL")) return [{ count: signals.causalChains ?? 0 }];
       if (sql.includes("FROM concept GROUP ALL")) return [{ count: signals.concepts ?? 0 }];
-      if (sql.includes("FROM compaction_checkpoint")) return [{ count: signals.compactions ?? 0 }];
       if (sql.includes("FROM monologue GROUP ALL")) return [{ count: signals.monologues ?? 0 }];
       if (sql.includes("FROM session ORDER BY started_at")) return earliest ? [{ earliest }] : [];
 
@@ -111,7 +109,7 @@ describe("checkGraduation", () => {
     expect(result.ready).toBe(false);
     expect(result.stage).toBe("nascent");
     expect(result.volumeScore).toBe(0);
-    expect(result.unmet.length).toBe(7);
+    expect(result.unmet.length).toBe(6);
     expect(result.met.length).toBe(0);
   });
 
@@ -123,13 +121,12 @@ describe("checkGraduation", () => {
     expect(result.volumeScore).toBe(0);
   });
 
-  it("developing at 4/7 thresholds", async () => {
+  it("developing at 4/6 thresholds", async () => {
     const result = await checkGraduation(mockStore({
       sessions: 20,
       reflections: 15,
       causalChains: 10,
       concepts: 50,
-      compactions: 0,
       monologues: 0,
       spanDays: 0,
     }) as any);
@@ -140,32 +137,37 @@ describe("checkGraduation", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("emerging at 5/7 thresholds (NOT ready — old behavior was wrong)", async () => {
+  it("emerging at 5/6 thresholds", async () => {
     const result = await checkGraduation(mockStore({
       sessions: 20,
       reflections: 15,
       causalChains: 10,
       concepts: 50,
-      compactions: 8,
-      monologues: 2,    // below threshold (5)
+      monologues: 10,
       spanDays: 1,      // below threshold (3)
     }) as any);
 
     expect(result.ready).toBe(false);
     expect(result.stage).toBe("emerging");
     expect(result.met.length).toBe(5);
-    expect(result.unmet.length).toBe(2);
+    expect(result.unmet.length).toBe(1);
   });
 
-  it("maturing at 6/7 thresholds", async () => {
+  it("maturing at 6/6 thresholds but low quality", async () => {
     const result = await checkGraduation(mockStore({
       sessions: 20,
       reflections: 15,
       causalChains: 10,
       concepts: 50,
-      compactions: 8,
       monologues: 10,
-      spanDays: 1,      // below threshold (3)
+      spanDays: 7,
+      // Bad quality blocks "ready"
+      avgUtil: 0.05,
+      retrievalCount: 50,
+      skillSuccess: 2,
+      skillFailure: 20,
+      criticalReflections: 12,
+      toolFailRate: 0.8,
     }) as any);
 
     expect(result.ready).toBe(false);
@@ -173,13 +175,12 @@ describe("checkGraduation", () => {
     expect(result.met.length).toBe(6);
   });
 
-  it("NOT ready at 7/7 if quality is too low", async () => {
+  it("NOT ready at 6/6 if quality is too low", async () => {
     const result = await checkGraduation(mockStore({
       sessions: 20,
       reflections: 15,
       causalChains: 10,
       concepts: 50,
-      compactions: 8,
       monologues: 10,
       spanDays: 7,
       // Terrible quality
@@ -191,20 +192,19 @@ describe("checkGraduation", () => {
       toolFailRate: 0.8,
     }) as any);
 
-    expect(result.met.length).toBe(7);
+    expect(result.met.length).toBe(6);
     expect(result.ready).toBe(false);
-    expect(result.stage).toBe("maturing"); // 7/7 volume but quality blocks "ready"
+    expect(result.stage).toBe("maturing"); // 6/6 volume but quality blocks "ready"
     expect(result.qualityScore).toBeLessThan(0.6);
     expect(result.diagnostics.some(d => d.area === "quality:composite")).toBe(true);
   });
 
-  it("ready at 7/7 with good quality", async () => {
+  it("ready at 6/6 with good quality", async () => {
     const result = await checkGraduation(mockStore({
       sessions: 20,
       reflections: 15,
       causalChains: 10,
       concepts: 50,
-      compactions: 8,
       monologues: 10,
       spanDays: 7,
       // Good quality
@@ -218,7 +218,7 @@ describe("checkGraduation", () => {
 
     expect(result.ready).toBe(true);
     expect(result.stage).toBe("ready");
-    expect(result.met.length).toBe(7);
+    expect(result.met.length).toBe(6);
     expect(result.volumeScore).toBe(1);
     expect(result.qualityScore).toBeGreaterThanOrEqual(0.6);
   });

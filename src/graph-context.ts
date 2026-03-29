@@ -634,9 +634,9 @@ async function formatContextMessage(
 
 function truncateToolResult(msg: AgentMessage, maxChars: number): AgentMessage {
   if (!isToolResult(msg)) return msg;
-  const totalLen = msg.content.reduce((s, c) => s + ((c as TextContent).text?.length ?? 0), 0);
+  const totalLen = msg.content.reduce((s: number, c: any) => s + ((c as TextContent).text?.length ?? 0), 0);
   if (totalLen <= maxChars) return msg;
-  const content = msg.content.map((c) => {
+  const content = msg.content.map((c: any) => {
     if (c.type !== "text") return c;
     const tc = c as TextContent;
     const allowed = Math.max(200, Math.floor((tc.text.length / totalLen) * maxChars));
@@ -654,8 +654,8 @@ function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWind
   const clean = messages.map((m) => {
     if (isAssistant(m) && m.stopReason === "error") {
       const errorText = m.content
-        .filter((c): c is TextContent => c.type === "text")
-        .map((c) => c.text)
+        .filter((c: any): c is TextContent => c.type === "text")
+        .map((c: any) => c.text)
         .join("")
         .slice(0, 150);
       return {
@@ -672,7 +672,7 @@ function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWind
   let i = 0;
   while (i < clean.length) {
     const msg = clean[i];
-    if (isAssistant(msg) && msg.content.some((c) => c.type === "toolCall")) {
+    if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
       const group: AgentMessage[] = [clean[i]];
       let j = i + 1;
       while (j < clean.length && isToolResult(clean[j])) {
