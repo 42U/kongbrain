@@ -78,12 +78,14 @@ async function processOrphanedSession(
   const systemPrompt = buildSystemPrompt(false, false, priorState);
 
   try {
+    console.warn(`[deferred] extracting session ${surrealSessionId} (${turns.length} turns, transcript ${transcript.length} chars)`);
     const response = await complete({
       system: systemPrompt,
       messages: [{ role: "user", content: `[TRANSCRIPT]\n${transcript.slice(0, 60000)}` }],
     });
 
     const responseText = response.text;
+    console.warn(`[deferred] extraction response: ${responseText.length} chars`);
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       let result: Record<string, any>;
@@ -95,10 +97,15 @@ async function processOrphanedSession(
         } catch { result = {}; }
       }
 
-      if (Object.keys(result).length > 0) {
-        const sessionId = surrealSessionId; // Use DB ID as session reference
+      const keys = Object.keys(result);
+      console.warn(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);
+      if (keys.length > 0) {
+        const sessionId = surrealSessionId;
         await writeExtractionResults(result, sessionId, store, embeddings, priorState);
+        console.warn(`[deferred] wrote extraction results for ${surrealSessionId}`);
       }
+    } else {
+      console.warn(`[deferred] no JSON found in response`);
     }
   } catch (e) {
     swallow.warn("deferredCleanup:extraction", e);
@@ -117,6 +124,7 @@ async function processOrphanedSession(
     });
 
     const handoffText = handoffResponse.text.trim();
+    console.warn(`[deferred] handoff response: ${handoffText.length} chars`);
     if (handoffText.length > 20) {
       let emb: number[] | null = null;
       if (embeddings.isAvailable()) {
