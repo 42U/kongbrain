@@ -125,6 +125,7 @@ export class KongBrainContextEngine implements ContextEngine {
         if (!session.daemon) {
           session.daemon = startMemoryDaemon(
             store, embeddings, session.sessionId, this.state.complete,
+            this.state.config.thresholds.extractionTimeoutMs,
           );
         }
       } catch (e) {
@@ -407,7 +408,7 @@ export class KongBrainContextEngine implements ContextEngine {
     }
 
     // Flush to daemon when token threshold OR turn count threshold is reached
-    const tokenReady = session.newContentTokens >= session.DAEMON_TOKEN_THRESHOLD;
+    const tokenReady = session.newContentTokens >= session.daemonTokenThreshold;
     const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
     if (session.daemon && (tokenReady || turnReady)) {
       try {
@@ -442,7 +443,7 @@ export class KongBrainContextEngine implements ContextEngine {
     // OpenClaw exits via Ctrl+C×2 (no async window), so session_end never fires.
     // Run reflection, skill extraction, and causal graduation periodically.
     const tokensSinceCleanup = session.cumulativeTokens - session.lastCleanupTokens;
-    if (tokensSinceCleanup >= session.MID_SESSION_CLEANUP_THRESHOLD && typeof this.state.complete === "function") {
+    if (tokensSinceCleanup >= session.midSessionCleanupThreshold && typeof this.state.complete === "function") {
       session.lastCleanupTokens = session.cumulativeTokens;
 
       // Fire-and-forget: these are non-critical background operations

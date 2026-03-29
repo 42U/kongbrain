@@ -115,4 +115,35 @@ describe("parsePluginConfig", () => {
     expect(config.surreal.user).toBe("root");
     expect(config.surreal.pass).toBe("root");
   });
+
+  it("returns default thresholds with no input", () => {
+    const config = parsePluginConfig();
+    expect(config.thresholds.daemonTokenThreshold).toBe(4000);
+    expect(config.thresholds.midSessionCleanupThreshold).toBe(100_000);
+    expect(config.thresholds.extractionTimeoutMs).toBe(60_000);
+    expect(config.thresholds.maxPendingThinking).toBe(20);
+  });
+
+  it("reads threshold values from plugin config", () => {
+    const config = parsePluginConfig({
+      thresholds: {
+        daemonTokenThreshold: 8000,
+        midSessionCleanupThreshold: 50_000,
+        extractionTimeoutMs: 30_000,
+        maxPendingThinking: 10,
+      },
+    });
+    expect(config.thresholds.daemonTokenThreshold).toBe(8000);
+    expect(config.thresholds.midSessionCleanupThreshold).toBe(50_000);
+    expect(config.thresholds.extractionTimeoutMs).toBe(30_000);
+    expect(config.thresholds.maxPendingThinking).toBe(10);
+  });
+
+  it("ignores non-number threshold values and uses defaults", () => {
+    const config = parsePluginConfig({
+      thresholds: { daemonTokenThreshold: "fast", extractionTimeoutMs: null },
+    });
+    expect(config.thresholds.daemonTokenThreshold).toBe(4000);
+    expect(config.thresholds.extractionTimeoutMs).toBe(60_000);
+  });
 });

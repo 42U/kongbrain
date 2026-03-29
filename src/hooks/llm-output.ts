@@ -79,8 +79,9 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
           if (thinking.length > 50) {
             session.pendingThinking.push(thinking);
             // Cap to prevent unbounded growth in long sessions
-            if (session.pendingThinking.length > 20) {
-              session.pendingThinking.splice(0, session.pendingThinking.length - 20);
+            const max = state.config.thresholds.maxPendingThinking;
+            if (session.pendingThinking.length > max) {
+              session.pendingThinking.splice(0, session.pendingThinking.length - max);
             }
           }
         }

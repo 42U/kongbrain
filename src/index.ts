@@ -463,6 +463,7 @@ export default definePluginEntry({
           globalState!.embeddings,
           session.sessionId,
           globalState!.complete,
+          globalState!.config.thresholds.extractionTimeoutMs,
         );
       } catch (e) {
         swallow.warn("index:startDaemon", e);

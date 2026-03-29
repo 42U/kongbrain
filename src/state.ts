@@ -54,13 +54,13 @@ export class SessionState {
   // Memory daemon
   daemon: MemoryDaemon | null = null;
   newContentTokens = 0;
-  readonly DAEMON_TOKEN_THRESHOLD = 4000;
+  daemonTokenThreshold = 4000;
   lastDaemonFlushTurnCount = 0;
 
   // Cumulative session token tracking (for mid-session cleanup trigger)
   cumulativeTokens = 0;
   lastCleanupTokens = 0;
-  readonly MID_SESSION_CLEANUP_THRESHOLD = 100_000;
+  midSessionCleanupThreshold = 100_000;
 
   // Cleanup tracking
   cleanedUp = false;
@@ -126,6 +126,8 @@ export class GlobalPluginState {
     let session = this.sessions.get(sessionKey);
     if (!session) {
       session = new SessionState(sessionId, sessionKey);
+      session.daemonTokenThreshold = this.config.thresholds.daemonTokenThreshold;
+      session.midSessionCleanupThreshold = this.config.thresholds.midSessionCleanupThreshold;
       this.sessions.set(sessionKey, session);
     }
     return session;

@@ -15,9 +15,21 @@ export interface EmbeddingConfig {
   dimensions: number;
 }
 
+export interface ThresholdConfig {
+  /** Tokens accumulated before daemon flushes extraction (default: 4000) */
+  daemonTokenThreshold: number;
+  /** Cumulative tokens before mid-session cleanup fires (default: 100000) */
+  midSessionCleanupThreshold: number;
+  /** Per-extraction timeout in ms (default: 60000) */
+  extractionTimeoutMs: number;
+  /** Max pending thinking blocks kept in memory (default: 20) */
+  maxPendingThinking: number;
+}
+
 export interface KongBrainConfig {
   surreal: SurrealConfig;
   embedding: EmbeddingConfig;
+  thresholds: ThresholdConfig;
 }
 
 /**
@@ -27,6 +39,7 @@ export interface KongBrainConfig {
 export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfig {
   const surreal = (raw?.surreal ?? {}) as Record<string, unknown>;
   const embedding = (raw?.embedding ?? {}) as Record<string, unknown>;
+  const thresholds = (raw?.thresholds ?? {}) as Record<string, unknown>;
 
   // Priority: plugin config > env vars > defaults
   const url =
@@ -59,6 +72,16 @@ export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfi
           : join(homedir(), ".node-llama-cpp", "models", "bge-m3-q4_k_m.gguf")),
       dimensions:
         typeof embedding.dimensions === "number" ? embedding.dimensions : 1024,
+    },
+    thresholds: {
+      daemonTokenThreshold:
+        typeof thresholds.daemonTokenThreshold === "number" ? thresholds.daemonTokenThreshold : 4000,
+      midSessionCleanupThreshold:
+        typeof thresholds.midSessionCleanupThreshold === "number" ? thresholds.midSessionCleanupThreshold : 100_000,
+      extractionTimeoutMs:
+        typeof thresholds.extractionTimeoutMs === "number" ? thresholds.extractionTimeoutMs : 60_000,
+      maxPendingThinking:
+        typeof thresholds.maxPendingThinking === "number" ? thresholds.maxPendingThinking : 20,
     },
   };
 }
