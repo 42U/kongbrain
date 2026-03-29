@@ -88,32 +88,34 @@ export class KongBrainContextEngine implements ContextEngine {
     const sessionKey = params.sessionKey ?? params.sessionId;
     const session = this.state.getOrCreateSession(sessionKey, params.sessionId);
 
-    try {
-      const workspace = this.state.workspaceDir || process.cwd();
-      const projectName = workspace.split("/").pop() || "default";
+    // Only create graph nodes on first bootstrap for this session
+    if (!session.surrealSessionId) {
+      try {
+        const workspace = this.state.workspaceDir || process.cwd();
+        const projectName = workspace.split("/").pop() || "default";
 
-      session.agentId = await store.ensureAgent("kongbrain", "openclaw-default");
-      session.projectId = await store.ensureProject(projectName);
-      await store.linkAgentToProject(session.agentId, session.projectId)
-        .catch(e => swallow.warn("bootstrap:linkAgentToProject", e));
+        session.agentId = await store.ensureAgent("kongbrain", "openclaw-default");
+        session.projectId = await store.ensureProject(projectName);
+        await store.linkAgentToProject(session.agentId, session.projectId)
+          .catch(e => swallow.warn("bootstrap:linkAgentToProject", e));
 
-      session.taskId = await store.createTask(`Session in ${projectName}`);
-      await store.linkAgentToTask(session.agentId, session.taskId)
-        .catch(e => swallow.warn("bootstrap:linkAgentToTask", e));
-      await store.linkTaskToProject(session.taskId, session.projectId)
-        .catch(e => swallow.warn("bootstrap:linkTaskToProject", e));
+        session.taskId = await store.createTask(`Session in ${projectName}`);
+        await store.linkAgentToTask(session.agentId, session.taskId)
+          .catch(e => swallow.warn("bootstrap:linkAgentToTask", e));
+        await store.linkTaskToProject(session.taskId, session.projectId)
+          .catch(e => swallow.warn("bootstrap:linkTaskToProject", e));
 
-      const surrealSessionId = await store.createSession(session.agentId);
-      await store.markSessionActive(surrealSessionId)
-        .catch(e => swallow.warn("bootstrap:markActive", e));
-      await store.linkSessionToTask(surrealSessionId, session.taskId)
-        .catch(e => swallow.warn("bootstrap:linkSessionToTask", e));
+        const surrealSessionId = await store.createSession(session.agentId);
+        await store.markSessionActive(surrealSessionId)
+          .catch(e => swallow.warn("bootstrap:markActive", e));
+        await store.linkSessionToTask(surrealSessionId, session.taskId)
+          .catch(e => swallow.warn("bootstrap:linkSessionToTask", e));
 
-      // Store the DB session ID for cleanup tracking
-      session.surrealSessionId = surrealSessionId;
-      session.lastUserTurnId = "";
-    } catch (e) {
-      swallow.error("bootstrap:5pillar", e);
+        session.surrealSessionId = surrealSessionId;
+        session.lastUserTurnId = "";
+      } catch (e) {
+        swallow.error("bootstrap:5pillar", e);
+      }
     }
 
     // Background maintenance (non-blocking)
