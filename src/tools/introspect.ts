@@ -207,7 +207,8 @@ async function verifyAction(store: any, recordId?: string) {
     return { content: [{ type: "text" as const, text: `Error: invalid record ID "${recordId}".` }], details: null };
   }
 
-  const rows = await store.queryFirst(`SELECT * FROM type::record($rid)`, { rid: recordId });
+  // Direct interpolation safe: assertRecordId validates format above
+  const rows = await store.queryFirst(`SELECT * FROM ${recordId}`);
   if (rows.length === 0) {
     return { content: [{ type: "text" as const, text: `Record not found: ${recordId}` }], details: { exists: false } };
   }

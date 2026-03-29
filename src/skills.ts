@@ -13,6 +13,7 @@ import type { CompleteFn } from "./state.js";
 import type { EmbeddingService } from "./embeddings.js";
 import type { SurrealStore } from "./surreal.js";
 import { swallow } from "./errors.js";
+import { assertRecordId } from "./surreal.js";
 
 // --- Types ---
 
@@ -237,12 +238,14 @@ export async function recordSkillOutcome(
 
   try {
     const field = success ? "success_count" : "failure_count";
+    assertRecordId(skillId);
+    // Direct interpolation safe: assertRecordId validates format above
     await store.queryExec(
-      `UPDATE type::record($sid) SET
+      `UPDATE ${skillId} SET
         ${field} += 1,
         avg_duration_ms = (avg_duration_ms * (success_count + failure_count - 1) + $dur) / (success_count + failure_count),
         last_used = time::now()`,
-      { sid: skillId, dur: durationMs },
+      { dur: durationMs },
     );
   } catch (e) { swallow("skills:non-critical", e); }
 }

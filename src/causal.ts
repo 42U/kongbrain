@@ -12,6 +12,7 @@
 import type { EmbeddingService } from "./embeddings.js";
 import type { SurrealStore, VectorSearchResult } from "./surreal.js";
 import { swallow } from "./errors.js";
+import { assertRecordId } from "./surreal.js";
 
 // --- Types ---
 
@@ -133,27 +134,31 @@ export async function queryCausalContext(
          ELSE 0 END AS score`;
 
   for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
-    const queries = frontier.flatMap((id) =>
-      causalEdges.map((edge) =>
+    const queries = frontier.flatMap((id) => {
+      assertRecordId(id);
+      // Direct interpolation safe: assertRecordId validates format above
+      return causalEdges.map((edge) =>
         store.queryFirst<any>(
           `SELECT id, text, importance, access_count AS accessCount,
                   created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM type::record($nid)->${edge}->? LIMIT 3`,
-          { ...bindings, nid: id },
+           FROM ${id}->${edge}->? LIMIT 3`,
+          bindings,
         ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
-      ),
-    );
+      );
+    });
 
-    const reverseQueries = frontier.flatMap((id) =>
-      causalEdges.map((edge) =>
+    const reverseQueries = frontier.flatMap((id) => {
+      assertRecordId(id);
+      // Direct interpolation safe: assertRecordId validates format above
+      return causalEdges.map((edge) =>
         store.queryFirst<any>(
           `SELECT id, text, importance, access_count AS accessCount,
                   created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM type::record($nid)<-${edge}<-? LIMIT 3`,
-          { ...bindings, nid: id },
+           FROM ${id}<-${edge}<-? LIMIT 3`,
+          bindings,
         ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
-      ),
-    );
+      );
+    });
 
     const allQueryResults = await Promise.all([...queries, ...reverseQueries]);
     const nextFrontier: string[] = [];

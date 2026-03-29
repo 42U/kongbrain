@@ -12,6 +12,7 @@ import type { TurnData, PriorExtractions } from "./daemon-types.js";
 import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
+import { assertRecordId } from "./surreal.js";
 
 // --- Build the extraction prompt ---
 
@@ -172,10 +173,12 @@ export async function writeExtractionResults(
     writeOps.push((async () => {
       for (const memId of result.resolved!.slice(0, 20)) {
         if (typeof memId !== "string" || !RECORD_ID_RE.test(memId)) continue;
+        assertRecordId(memId);
         counts.resolved++;
+        // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE type::record($mid) SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
-          { mid: memId, sid: sessionId },
+          `UPDATE ${memId} SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
+          { sid: sessionId },
         ).catch(e => swallow.warn("daemon:resolveMemory", e));
       }
     })());

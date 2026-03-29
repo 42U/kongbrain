@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { Worker } from "node:worker_threads";
 import type { SurrealStore } from "./surreal.js";
+import { assertRecordId } from "./surreal.js";
 import { swallow } from "./errors.js";
 
 // ── Types ──
@@ -197,9 +198,10 @@ async function fetchTrainingData(store: SurrealStore): Promise<TrainingSample[]>
   const embeddingMap = new Map<string, number[]>();
   for (const mid of uniqueMemIds) {
     try {
+      assertRecordId(mid);
+      // Direct interpolation safe: assertRecordId validates format above
       const flat = await store.queryFirst<{ id: string; embedding: number[] }>(
-        `SELECT id, embedding FROM type::record($mid) WHERE embedding != NONE`,
-        { mid },
+        `SELECT id, embedding FROM ${mid} WHERE embedding != NONE`,
       );
       if (flat[0]?.embedding) embeddingMap.set(mid, flat[0].embedding);
     } catch (e) { swallow("acan:fetchEmb", e); }

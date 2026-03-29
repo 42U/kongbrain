@@ -11,6 +11,7 @@
 import type { CompleteFn, SessionState } from "./state.js";
 import type { SurrealStore } from "./surreal.js";
 import { swallow } from "./errors.js";
+import { assertRecordId } from "./surreal.js";
 
 // --- Types ---
 
@@ -182,15 +183,17 @@ Return ONLY valid JSON.`,
     for (const g of correctionGrades) {
       if (g.learned) {
         // Agent followed the correction unprompted — decay toward background (floor 3)
+        assertRecordId(g.id);
+        // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE type::record($gid) SET importance = math::max([3, importance - 2])`,
-          { gid: g.id },
+          `UPDATE ${g.id} SET importance = math::max([3, importance - 2])`,
         ).catch(e => swallow.warn("cognitive-check:correctionDecay", e));
       } else {
         // Correction was relevant but agent ignored it — reinforce (cap 9)
+        assertRecordId(g.id);
+        // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE type::record($gid) SET importance = math::min([9, importance + 1])`,
-          { gid: g.id },
+          `UPDATE ${g.id} SET importance = math::min([9, importance + 1])`,
         ).catch(e => swallow.warn("cognitive-check:correctionReinforce", e));
       }
     }
@@ -219,9 +222,11 @@ Return ONLY valid JSON.`,
     // Mid-session resolution — mark addressed memories immediately
     const resolvedGrades = result.grades.filter(g => g.resolved && g.id.startsWith("memory:"));
     for (const g of resolvedGrades) {
+      assertRecordId(g.id);
+      // Direct interpolation safe: assertRecordId validates format above
       await store.queryExec(
-        `UPDATE type::record($gid) SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
-        { gid: g.id, sid: params.sessionId },
+        `UPDATE ${g.id} SET status = 'resolved', resolved_at = time::now(), resolved_by = $sid`,
+        { sid: params.sessionId },
       ).catch(e => swallow.warn("cognitive-check:resolve", e));
     }
   } catch (e) {
@@ -317,9 +322,12 @@ async function applyRetrievalGrades(
         { id: grade.id, sid: sessionId },
       );
       if (row?.[0]?.id) {
+        const rid = String(row[0].id);
+        assertRecordId(rid);
+        // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE type::record($rid) SET llm_relevance = $score, llm_relevant = $relevant, llm_reason = $reason`,
-          { rid: String(row[0].id), score: grade.score, relevant: grade.relevant, reason: grade.reason },
+          `UPDATE ${rid} SET llm_relevance = $score, llm_relevant = $relevant, llm_reason = $reason`,
+          { score: grade.score, relevant: grade.relevant, reason: grade.reason },
         );
       }
       // Feed relevance score into the utility cache — drives WMR provenUtility scoring
