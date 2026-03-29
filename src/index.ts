@@ -300,7 +300,9 @@ export default definePluginEntry({
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = new EmbeddingService(config.embedding);
-      globalState = new GlobalPluginState(config, store, embeddings, api.runtime.complete);
+      // api.runtime.complete is undefined at register() time — wrap in a lazy proxy
+      const complete = (params: Parameters<typeof api.runtime.complete>[0]) => api.runtime.complete(params);
+      globalState = new GlobalPluginState(config, store, embeddings, complete);
     }
     globalState.workspaceDir = api.resolvePath(".");
     globalState.enqueueSystemEvent = (text, opts) =>
