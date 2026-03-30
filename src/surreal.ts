@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Surreal } from "surrealdb";
 import type { SurrealConfig } from "./config.js";
 import { swallow } from "./errors.js";
+import { loadSchema } from "./schema-loader.js";
 
 /** Record with a vector similarity score from SurrealDB search */
 export interface VectorSearchResult {
@@ -94,8 +92,6 @@ function patchOrderByFields(sql: string): string {
   );
 }
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /**
  * SurrealDB store — wraps all database operations for the KongBrain plugin.
  * Replaces the module-level singleton pattern from standalone KongBrain.
@@ -180,14 +176,7 @@ export class SurrealStore {
   }
 
   private async runSchema(): Promise<void> {
-    let schemaPath = join(__dirname, "schema.surql");
-    let schema: string;
-    try {
-      schema = readFileSync(schemaPath, "utf-8");
-    } catch {
-      schemaPath = join(__dirname, "..", "src", "schema.surql");
-      schema = readFileSync(schemaPath, "utf-8");
-    }
+    const schema = loadSchema();
     await this.db.query(schema);
   }
 

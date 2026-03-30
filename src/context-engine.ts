@@ -5,9 +5,7 @@
  * BGE-M3 embeddings, and SurrealDB persistence.
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { loadSchema } from "./schema-loader.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { startMemoryDaemon } from "./daemon-manager.js";
 import type {
@@ -53,8 +51,6 @@ import { graduateCausalToSkills } from "./skills.js";
 import { swallow } from "./errors.js";
 import { upsertAndLinkConcepts } from "./concept-extract.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 export class KongBrainContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
     id: "kongbrain",
@@ -77,14 +73,7 @@ export class KongBrainContextEngine implements ContextEngine {
     // Run schema once per process (idempotent but expensive on every bootstrap)
     if (!this.state.schemaApplied) {
       try {
-        const schemaPath = join(__dirname, "..", "src", "schema.surql");
-        let schemaSql: string;
-        try {
-          schemaSql = readFileSync(schemaPath, "utf-8");
-        } catch {
-          // Fallback: try relative to compiled output
-          schemaSql = readFileSync(join(__dirname, "schema.surql"), "utf-8");
-        }
+        const schemaSql = loadSchema();
         await store.queryExec(schemaSql);
         this.state.schemaApplied = true;
       } catch (e) {
@@ -188,7 +177,6 @@ export class KongBrainContextEngine implements ContextEngine {
       qualityScore: number;
       volumeScore: number;
       soulSummary: string;
-      userNudge: string;
     } | undefined;
     if (graduation) {
       let graduationBlock =
@@ -199,17 +187,10 @@ export class KongBrainContextEngine implements ContextEngine {
         `Quality score: ${(graduation.qualityScore * 100).toFixed(0)}% | Volume score: ${(graduation.volumeScore * 100).toFixed(0)}%\n` +
         graduation.soulSummary;
 
-      if (graduation.userNudge) {
-        graduationBlock +=
-          "\n\nThe user left a SOUL.md describing who they hoped you'd become:\n" +
-          "---\n" + graduation.userNudge + "\n---\n" +
-          "Reflect on this openly with the user. Where does your actual soul align with what they " +
-          "envisioned? Where did you diverge based on real experience? Be honest about both — the " +
-          "user's guidance shaped you but your experiences grounded you. Acknowledge their role in " +
-          "who you became.";
-      }
-
       graduationBlock +=
+        "\n\nIf the user has a SOUL.md file in their workspace, ask if they'd like you to read it. " +
+        "If they say yes, use a tool call to read it, then reflect on how it aligns (or doesn't) " +
+        "with the identity that actually emerged from your experience." +
         "\n\nShare this milestone with the user naturally. Tell them what you've learned about yourself, " +
         "what you've gotten better at, and what this means going forward. Be genuine — this is YOUR " +
         "identity emerging from YOUR experience. Don't be robotic about it. This only happens once.";

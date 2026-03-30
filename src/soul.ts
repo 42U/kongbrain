@@ -21,8 +21,6 @@
  * Ported from kongbrain — takes SurrealStore/EmbeddingService as params.
  */
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { CompleteFn } from "./state.js";
 import type { SurrealStore } from "./surreal.js";
 import { swallow } from "./errors.js";
@@ -491,7 +489,7 @@ export async function reviseSoul(
 export async function generateInitialSoul(
   store: SurrealStore,
   complete: CompleteFn,
-  workspaceDir?: string,
+  userSoulNudge?: string,
   quality?: QualitySignals,
 ): Promise<Omit<SoulDocument, "id" | "agent_id" | "created_at" | "updated_at" | "revisions"> | null> {
   if (!store.isAvailable()) return null;
@@ -523,27 +521,20 @@ INNER MONOLOGUE (private thoughts):
 ${(monologues as { text: string }[]).map(m => `- ${m.text}`).join("\n") || "None yet"}
 ${qualityContext}`.trim();
 
-  // Check if the user left a SOUL.md — a nudge, not an instruction.
-  let userSoulNudge = "";
-  if (workspaceDir) {
-    try {
-      const soulMd = await readFile(join(workspaceDir, "SOUL.md"), "utf-8");
-      if (soulMd.trim().length > 50) {
-        userSoulNudge = `\n\nUSER GUIDANCE (SOUL.md):
+  // If the user provided SOUL.md content (via tool call at graduation), fold it in as a nudge.
+  let soulNudgeBlock = "";
+  if (userSoulNudge && userSoulNudge.trim().length > 50) {
+    soulNudgeBlock = `\n\nUSER GUIDANCE (SOUL.md):
 The user left this file describing who they'd like you to be. Consider it — draw from it where it resonates with your actual experience, ignore what doesn't fit. This is a suggestion, not a mandate. Your soul should be grounded in what you've actually done and learned.
 
 ---
-${soulMd.trim().slice(0, 3000)}
+${userSoulNudge.trim().slice(0, 3000)}
 ---`;
-      }
-    } catch {
-      // No SOUL.md or unreadable — that's fine
-    }
   }
 
   const prompt = `You are KongBrain, a graph-backed coding agent with persistent memory. You've been running for multiple sessions and accumulated experience. Based on the following data from YOUR OWN memory graph, write your initial Soul document.
 
-${graphSummary}${userSoulNudge}
+${graphSummary}${soulNudgeBlock}
 
 Output ONLY valid JSON:
 {
@@ -594,7 +585,7 @@ Be honest, not aspirational. Only claim what the data supports.`;
  * Key change: requires 7/7 thresholds AND quality ≥ 0.6. No more premature
  * graduation at 5/7 with no quality check.
  */
-export async function attemptGraduation(store: SurrealStore, complete: CompleteFn, workspaceDir?: string): Promise<{
+export async function attemptGraduation(store: SurrealStore, complete: CompleteFn, userSoulNudge?: string): Promise<{
   graduated: boolean;
   soul?: SoulDocument | null;
   report: GraduationReport;
@@ -610,7 +601,7 @@ export async function attemptGraduation(store: SurrealStore, complete: CompleteF
     return { graduated: false, report };
   }
 
-  const content = await generateInitialSoul(store, complete, workspaceDir, report.quality);
+  const content = await generateInitialSoul(store, complete, userSoulNudge, report.quality);
   if (!content) {
     return { graduated: false, report };
   }

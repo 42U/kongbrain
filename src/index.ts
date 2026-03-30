@@ -5,7 +5,6 @@
  * SurrealDB persistence and BGE-M3 embeddings.
  */
 
-import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
@@ -138,7 +137,7 @@ async function runSessionCleanup(
   );
 
   // Soul graduation attempt — capture result for user notification
-  const graduationPromise = attemptGraduation(s, complete, state.workspaceDir)
+  const graduationPromise = attemptGraduation(s, complete)
     .catch(e => { swallow.warn("cleanup:soulGraduation", e); return null; });
   endOps.push(graduationPromise);
 
@@ -271,33 +270,19 @@ async function detectGraduationEvent(
     soulSummary = `\n\nYour soul document contains:\nWorking style:\n${styles}\n\nSelf-observations:\n${obs}\n\nEarned values:\n${vals}`;
   }
 
-  // Read SOUL.md — the user's original nudge about who they wanted the agent to be.
-  // The agent should reflect on how this aligns (or doesn't) with what actually emerged.
-  let userNudge = "";
-  if (state.workspaceDir) {
-    try {
-      const soulMd = await readFile(join(state.workspaceDir, "SOUL.md"), "utf-8");
-      if (soulMd.trim().length > 50) {
-        userNudge = soulMd.trim().slice(0, 2000);
-      }
-    } catch {
-      // No SOUL.md — that's fine, graduation happened without user guidance
-    }
-  }
-
   // Flag the session for context engine injection
   (session as any)._graduationCelebration = {
     qualityScore: event.quality_score,
     volumeScore: event.volume_score,
     soulSummary,
-    userNudge,
   };
 
   // Also fire a system event so the user sees it immediately
   if (state.enqueueSystemEvent) {
     state.enqueueSystemEvent(
       "[MILESTONE] This is a special session — KongBrain has graduated and authored its own Soul document. " +
-      "The agent will share what this means.",
+      "The agent will share what this means. " +
+      "Ask the user if they have a SOUL.md file they'd like you to read — if so, use a tool call to read it and reflect on how it aligns with your emerged identity.",
       { sessionKey: session.sessionKey },
     );
   }
