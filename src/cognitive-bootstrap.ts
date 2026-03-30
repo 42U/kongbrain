@@ -44,6 +44,11 @@ const CORE_ENTRIES: { text: string; category: string; priority: number }[] = [
     category: "tools",
     priority: 75,
   },
+  {
+    text: `GRAPH SCHEMA REFERENCE: Key table fields — concept: content (the label/name), embedding, stability, confidence, source. memory: text, embedding, category, importance, session_id. artifact: path, type, description, embedding. turn: session_id, role, text, tool_name. session: agent_id, started_at, ended_at. reflection: session_id, text, category, severity. skill: name, description, steps, trigger. monologue: content, session_id. When querying the graph directly, use these field names — e.g. concept.content is the concept label, not concept.name or concept.text.`,
+    category: "schema",
+    priority: 70,
+  },
 ];
 
 // ── Identity Chunks: vector-searchable reference material ────────────────
