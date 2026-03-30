@@ -47,6 +47,8 @@ DEFINE INDEX IF NOT EXISTS artifact_vec_idx ON artifact FIELDS embedding HNSW DI
 -- PILLAR 5: Concept (semantic knowledge nodes)
 -- ============================================================
 DEFINE TABLE IF NOT EXISTS concept SCHEMALESS;
+-- Recovery: restore content from name if the rename migration ran before revert
+UPDATE concept SET content = name WHERE content = NONE AND name != NONE;
 DEFINE FIELD IF NOT EXISTS content ON concept TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON concept TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS stability ON concept TYPE float DEFAULT 1.0;
