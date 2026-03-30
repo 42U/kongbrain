@@ -40,10 +40,27 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
         embedding: null,
       });
 
-      // Fix 5: Link tool result turn back to the assistant turn that triggered it
-      if (toolResultTurnId && session.lastAssistantTurnId) {
-        await state.store.relate(toolResultTurnId, "tool_result_of", session.lastAssistantTurnId)
-          .catch(e => swallow.warn("hook:afterToolCall:tool_result_of", e));
+      // Link tool result turn back to the assistant turn that triggered it.
+      // If the assistant turn hasn't been ingested yet (afterTurn fires later),
+      // eagerly create it so we have a record ID to link against.
+      if (toolResultTurnId) {
+        if (!session.lastAssistantTurnId && session.lastAssistantText) {
+          try {
+            const assistantTurnId = await state.store.upsertTurn({
+              session_id: session.sessionId,
+              role: "assistant",
+              text: session.lastAssistantText,
+              embedding: null,
+            });
+            if (assistantTurnId) session.lastAssistantTurnId = assistantTurnId;
+          } catch (e) {
+            swallow("hook:afterToolCall:eagerAssistantTurn", e);
+          }
+        }
+        if (session.lastAssistantTurnId) {
+          await state.store.relate(toolResultTurnId, "tool_result_of", session.lastAssistantTurnId)
+            .catch(e => swallow.warn("hook:afterToolCall:tool_result_of", e));
+        }
       }
     } catch (e) {
       swallow("hook:afterToolCall:store", e);

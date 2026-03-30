@@ -139,6 +139,7 @@ export async function generateReflection(
   store: SurrealStore,
   embeddings: EmbeddingService,
   complete: CompleteFn,
+  surrealSessionId?: string,
 ): Promise<void> {
   if (!store.isAvailable()) return;
 
@@ -207,8 +208,8 @@ export async function generateReflection(
     );
     const reflectionId = String(rows[0]?.id ?? "");
 
-    if (reflectionId) {
-      await store.relate(reflectionId, "reflects_on", sessionId).catch(e => swallow.warn("reflection:relate", e));
+    if (reflectionId && surrealSessionId) {
+      await store.relate(reflectionId, "reflects_on", surrealSessionId).catch(e => swallow.warn("reflection:relate", e));
     }
   } catch (e) {
     swallow("reflection:silent", e);

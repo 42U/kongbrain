@@ -126,7 +126,7 @@ async function runSessionCleanup(
 
   // Metacognitive reflection
   endOps.push(
-    generateReflection(session.sessionId, s, emb, complete)
+    generateReflection(session.sessionId, s, emb, complete, session.surrealSessionId)
       .catch(e => swallow.warn("cleanup:reflection", e)),
   );
 

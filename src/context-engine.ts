@@ -457,7 +457,7 @@ export class KongBrainContextEngine implements ContextEngine {
       }
 
       cleanupOps.push(
-        generateReflection(session.sessionId, store, embeddings, this.state.complete)
+        generateReflection(session.sessionId, store, embeddings, this.state.complete, session.surrealSessionId)
           .catch(e => swallow.warn("midCleanup:reflection", e)),
       );
 
