@@ -2,8 +2,6 @@
 
 # KongBrain
 
-### The Brain
-
 ![KongBrain](KongClaw.png)
 
 [![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)
