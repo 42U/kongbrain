@@ -1,7 +1,7 @@
 <h1 align="center">KongBrain</h1>
 
 <p align="center">
-  <img src="KongClaw.png" alt="KongBrain" width="1000">
+  <img src="KongClaw.png" alt="KongBrain" width="800">
 </p>
 
 <p align="center">
