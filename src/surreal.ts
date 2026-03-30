@@ -340,7 +340,7 @@ export class SurrealStore {
           { vec, lim: crossTurnLim, sid: sessionId },
         ),
         this.safeQuery(
-          `SELECT id, name AS text, stability AS importance, access_count AS accessCount,
+          `SELECT id, content AS text, stability AS importance, access_count AS accessCount,
                   created_at AS timestamp, 'concept' AS table,
                   vector::similarity::cosine(embedding, $vec) AS score${emb}
            FROM concept
@@ -596,7 +596,7 @@ export class SurrealStore {
     const scoreExpr =
       ", IF embedding != NONE AND array::len(embedding) > 0 THEN vector::similarity::cosine(embedding, $vec) ELSE 0 END AS score";
     const bindings = { vec: queryVec };
-    const selectFields = `SELECT id, text, name, content, description, importance, stability,
+    const selectFields = `SELECT id, text, content, description, importance, stability,
                   access_count AS accessCount, created_at AS timestamp,
                   meta::tb(id) AS table${scoreExpr}`;
 
@@ -636,7 +636,7 @@ export class SurrealStore {
           if (seen.has(nodeId)) continue;
           seen.add(nodeId);
 
-          const text = row.text ?? row.name ?? row.content ?? row.description ?? null;
+          const text = row.text ?? row.content ?? row.description ?? null;
           if (text) {
             const score = row.score ?? 0;
             allNeighbors.push({
@@ -680,14 +680,13 @@ export class SurrealStore {
   // ── Concept / Memory / Artifact CRUD ───────────────────────────────────
 
   async upsertConcept(
-    name: string,
+    content: string,
     embedding: number[] | null,
     source?: string,
-    description?: string,
   ): Promise<string> {
     const rows = await this.queryFirst<{ id: string }>(
-      `SELECT id FROM concept WHERE string::lowercase(name) = string::lowercase($name) LIMIT 1`,
-      { name },
+      `SELECT id FROM concept WHERE string::lowercase(content) = string::lowercase($content) LIMIT 1`,
+      { content },
     );
     if (rows.length > 0) {
       const id = String(rows[0].id);
@@ -697,8 +696,7 @@ export class SurrealStore {
       return id;
     }
     const emb = embedding?.length ? embedding : undefined;
-    const record: Record<string, unknown> = { name, source: source ?? undefined };
-    if (description) record.description = description;
+    const record: Record<string, unknown> = { content, source: source ?? undefined };
     if (emb) record.embedding = emb;
     const created = await this.queryFirst<{ id: string }>(
       `CREATE concept CONTENT $record RETURN id`,
