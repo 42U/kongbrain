@@ -1,34 +1,33 @@
-<h1 align="center">KongBrain</h1>
+<div align="center">
 
-<p align="center">
-  <img src="KongClaw.png" alt="KongBrain" width="800">
-</p>
+# KongBrain
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/kongbrain"><img src="https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837" alt="npm"></a>
-  <a href="https://clawhub.ai/packages/kongbrain"><img src="https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge" alt="ClawHub"></a>
-  <a href="https://github.com/42U/kongbrain"><img src="https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold" alt="GitHub Stars"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/github/license/42U/kongbrain?style=for-the-badge&logo=opensourceinitiative&color=blue" alt="License: MIT"></a>
-  <br>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js"></a>
-  <a href="https://surrealdb.com"><img src="https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white" alt="SurrealDB"></a>
-  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge" alt="OpenClaw"></a>
-  <a href="https://vitest.dev"><img src="https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"></a>
-</p>
+### The Brain
+
+![KongBrain](KongClaw.png)
+
+[![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)
+[![ClawHub](https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge)](https://clawhub.ai/packages/kongbrain)
+[![GitHub Stars](https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold)](https://github.com/42U/kongbrain)
+[![License: MIT](https://img.shields.io/github/license/42U/kongbrain?style=for-the-badge&logo=opensourceinitiative&color=blue)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
+[![Tests](https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
-> *OpenClaw ships with a lobster brain. It works — lobsters have survived 350 million years — but they also solve problems by walking backwards and occasionally eating each other.*
->
-> *When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.*
->
-> *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
+OpenClaw ships with a lobster brain. It works — lobsters have survived 350 million years — but they also solve problems by walking backwards and occasionally eating each other. When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.
 
-Persistent memory graph. Vector-embedded, self-scoring, wired to learn across sessions. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
+KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.
 
-Your assistant stops forgetting. Then it starts getting smarter.
+Apes remember. Apes use tools. Apes hold grudges about your code style and learn from them. Lobsters eat garbage off the ocean floor and forget about it immediately.
+
+The surgery takes about 2 minutes. No anesthesia required.
 
 [Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
+
+</div>
 
 ---
 
@@ -41,7 +40,7 @@ Your assistant stops forgetting. Then it starts getting smarter.
 | **Adaptation** | Same retrieval budget every turn, regardless of intent. | 10 intent categories. Simple question? Minimal retrieval. Complex debugging? Full graph search + elevated thinking. |
 | **Learning** | None. Every session starts from zero. | Skills extracted from successful workflows, causal chains graduated into reusable procedures, corrections remembered permanently. |
 | **Self-awareness** | Thermostat-level. | Periodic cognitive checks grade its own retrieval quality, detect contradictions, suppress noise, and extract your preferences. Eventually graduates a soul document. |
-| **Compaction** | LLM-summarizes your conversation mid-flow (disruptive). | Graph retrieval IS the compaction. No interruptions, no lossy summaries. |
+| **Compaction** | LLM-summarizes your conversation mid-flow (disruptive). | Graph retrieval IS the compaction — no interruptions, no lossy summaries. |
 
 ## Quick Start
 
@@ -212,7 +211,7 @@ SurrealDB with HNSW vector indexes (1024-dim cosine). Everything is embedded and
 | `soul` | Emergent identity document, earned through graduation |
 
 <details>
-<summary><strong>Adaptive Reasoning</strong>: per-turn intent classification and budget allocation</summary>
+<summary><strong>Adaptive Reasoning</strong> — per-turn intent classification and budget allocation</summary>
 
 Every turn gets classified by intent and assigned an adaptive config:
 
@@ -249,7 +248,7 @@ Every turn gets classified by intent and assigned an adaptive config:
 </details>
 
 <details>
-<summary><strong>ACAN</strong>: learned cross-attention scorer</summary>
+<summary><strong>ACAN</strong> — learned cross-attention scorer</summary>
 
 A ~130K-parameter cross-attention network that replaces the fixed WMR weights once enough data accumulates.
 
@@ -260,7 +259,7 @@ A ~130K-parameter cross-attention network that replaces the fixed WMR weights on
 </details>
 
 <details>
-<summary><strong>Soul & Graduation</strong>: earned identity, not assigned</summary>
+<summary><strong>Soul & Graduation</strong> — earned identity, not assigned</summary>
 
 The agent earns an identity document through accumulated experience. Graduation requires **all 7 thresholds met** AND a **quality score >= 0.6**:
 
@@ -285,7 +284,7 @@ The agent earns an identity document through accumulated experience. Graduation 
 </details>
 
 <details>
-<summary><strong>Reflection System</strong>: metacognitive self-correction</summary>
+<summary><strong>Reflection System</strong> — metacognitive self-correction</summary>
 
 Triggers at session end when metrics indicate problems:
 
@@ -347,7 +346,7 @@ At session end, KongBrain runs a combined extraction pass: skill graduation, met
 At session start, a wake-up briefing is synthesized from the handoff, recent monologues, soul content (if graduated), and identity state, then injected as inner speech so the agent knows who it is and what it was doing.
 
 <details>
-<summary><strong>Memory Daemon</strong>: background knowledge extraction</summary>
+<summary><strong>Memory Daemon</strong> — background knowledge extraction</summary>
 
 A worker thread running throughout the session. Batches turns every ~12K tokens, calls the configured LLM to extract:
 
@@ -369,9 +368,9 @@ A worker thread running throughout the session. Batches turns every ~12K tokens,
 
 Three tools are registered for the LLM:
 
-- **`recall`**: Search graph memory by query
-- **`core_memory`**: Read/write persistent core directives (tiered: always-loaded vs session-pinned)
-- **`introspect`**: Inspect database state, verify memory counts, run diagnostics, check graduation status, migrate workspace files
+- **`recall`** — Search graph memory by query
+- **`core_memory`** — Read/write persistent core directives (tiered: always-loaded vs session-pinned)
+- **`introspect`** — Inspect database state, verify memory counts, run diagnostics, check graduation status, migrate workspace files
 
 ---
 
@@ -404,4 +403,8 @@ The lobster doesn't accept contributions. The ape does.
 
 ---
 
+<div align="center">
+
 MIT License | Built by [42U](https://github.com/42U)
+
+</div>
