@@ -121,7 +121,7 @@ export function startMemoryDaemon(
       }
     }
 
-    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState, taskId, projectId);
+    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState, taskId, projectId, turns);
     extractedTurnCount = turns.length;
   }
 

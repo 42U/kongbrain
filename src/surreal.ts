@@ -684,6 +684,8 @@ export class SurrealStore {
     embedding: number[] | null,
     source?: string,
   ): Promise<string> {
+    if (!content?.trim()) return "";
+    content = content.trim();
     const rows = await this.queryFirst<{ id: string }>(
       `SELECT id FROM concept WHERE string::lowercase(content) = string::lowercase($content) LIMIT 1`,
       { content },

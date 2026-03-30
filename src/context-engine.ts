@@ -49,7 +49,6 @@ import { extractSkill } from "./skills.js";
 import { generateReflection } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
 import { swallow } from "./errors.js";
-import { upsertAndLinkConcepts } from "./concept-extract.js";
 
 export class KongBrainContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
@@ -265,11 +264,7 @@ export class KongBrainContextEngine implements ContextEngine {
               .catch(e => swallow.warn("ingest:responds_to", e));
           }
 
-          // Extract and link concepts for both user and assistant turns
-          if (worthEmbedding) {
-            extractAndLinkConcepts(turnId, text, this.state, session)
-              .catch(e => swallow.warn("ingest:concepts", e));
-          }
+          // Concept extraction (mentions edges) handled by daemon via LLM
         }
 
         if (role === "user") {
@@ -400,7 +395,7 @@ export class KongBrainContextEngine implements ContextEngine {
         const turnData = recentTurns.map(t => ({
           role: t.role as "user" | "assistant",
           text: t.text,
-          turnId: (t as any).id,
+          turnId: String((t as any).id ?? ""),
         }));
 
         // Gather retrieved memory IDs for dedup
@@ -441,7 +436,7 @@ export class KongBrainContextEngine implements ContextEngine {
               const turnData = recentTurns.map(t => ({
                 role: t.role as "user" | "assistant",
                 text: t.text,
-                turnId: (t as any).id,
+                turnId: String((t as any).id ?? ""),
               }));
               session.daemon!.sendTurnBatch(turnData, [...session.pendingThinking], []);
             })
@@ -537,16 +532,3 @@ function hasSemantic(text: string): boolean {
 }
 
 // --- Concept extraction (delegates to shared helper) ---
-
-async function extractAndLinkConcepts(
-  turnId: string,
-  text: string,
-  state: GlobalPluginState,
-  session?: SessionState,
-): Promise<void> {
-  await upsertAndLinkConcepts(
-    turnId, "mentions", text,
-    state.store, state.embeddings, "concepts",
-    session ? { taskId: session.taskId, projectId: session.projectId } : undefined,
-  );
-}

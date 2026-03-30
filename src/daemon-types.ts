@@ -5,6 +5,7 @@
 export interface TurnData {
   role: string;
   text: string;
+  turnId?: string;
   tool_name?: string;
   tool_result?: string;
   file_paths?: string[];

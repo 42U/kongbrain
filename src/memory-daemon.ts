@@ -127,10 +127,70 @@ export async function writeExtractionResults(
   priorState: PriorExtractions,
   taskId?: string,
   projectId?: string,
+  turns?: TurnData[],
 ): Promise<ExtractionCounts> {
   const counts: ExtractionCounts = {
     causal: 0, monologue: 0, resolved: 0, concept: 0,
     correction: 0, preference: 0, artifact: 0, decision: 0, skill: 0,
+  };
+
+  // ── Phase 1: Upsert concepts first (LLM-extracted) so we have IDs ────
+  // These IDs are used to create mentions/about_concept/artifact_mentions
+  // edges in Phase 2, replacing the old regex-based extraction.
+
+  const extractedConceptIds: string[] = [];
+
+  if (Array.isArray(result.concepts) && result.concepts.length > 0) {
+    for (const c of result.concepts.slice(0, 11)) {
+      if (!c.name || !c.content) continue;
+      if (priorState.conceptNames.includes(c.name)) continue;
+      counts.concept++;
+      priorState.conceptNames.push(c.name);
+      try {
+        let emb: number[] | null = null;
+        if (embeddings.isAvailable()) {
+          try { emb = await embeddings.embed(c.content); } catch (e) { swallow("daemon:embedConcept", e); }
+        }
+        const conceptId = await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
+        if (conceptId) {
+          extractedConceptIds.push(conceptId);
+          await linkConceptHierarchy(conceptId, c.name, store, embeddings, "daemon:concept");
+          if (taskId) {
+            await store.relate(conceptId, "derived_from", taskId)
+              .catch(e => swallow("daemon:concept:derived_from", e));
+          }
+          if (projectId) {
+            await store.relate(conceptId, "relevant_to", projectId)
+              .catch(e => swallow("daemon:concept:relevant_to", e));
+          }
+        }
+      } catch (e) {
+        swallow.warn("daemon:upsertConcept", e);
+      }
+    }
+  }
+
+  // ── Phase 2: Create mentions edges (turn → concept) using LLM concepts ─
+  // Links batch turns to extracted concepts, replacing regex-based extraction.
+
+  if (extractedConceptIds.length > 0 && turns && turns.length > 0) {
+    const turnIds = turns.map(t => t.turnId).filter((id): id is string => !!id);
+    for (const turnId of turnIds) {
+      for (const conceptId of extractedConceptIds) {
+        store.relate(turnId, "mentions", conceptId)
+          .catch(e => swallow("daemon:mentions", e));
+      }
+    }
+  }
+
+  // ── Phase 3: All other extractions in parallel ───────────────────────
+
+  /** Link a source node to all extracted concepts via the given edge. */
+  const linkToConcepts = async (sourceId: string, edgeName: string) => {
+    for (const conceptId of extractedConceptIds) {
+      await store.relate(sourceId, edgeName, conceptId)
+        .catch(e => swallow(`daemon:${edgeName}`, e));
+    }
   };
 
   const writeOps: Promise<void>[] = [];
@@ -187,37 +247,7 @@ export async function writeExtractionResults(
     })());
   }
 
-  // 4. Concepts
-  if (Array.isArray(result.concepts) && result.concepts.length > 0) {
-    for (const c of result.concepts.slice(0, 11)) {
-      if (!c.name || !c.content) continue;
-      if (priorState.conceptNames.includes(c.name)) continue;
-      counts.concept++;
-      priorState.conceptNames.push(c.name);
-      writeOps.push((async () => {
-        let emb: number[] | null = null;
-        if (embeddings.isAvailable()) {
-          try { emb = await embeddings.embed(c.content); } catch (e) { swallow("daemon:embedConcept", e); }
-        }
-        const conceptId = await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
-        if (conceptId) {
-          await linkConceptHierarchy(conceptId, c.name, store, embeddings, "daemon:concept");
-          // derived_from: concept → task
-          if (taskId) {
-            await store.relate(conceptId, "derived_from", taskId)
-              .catch(e => swallow("daemon:concept:derived_from", e));
-          }
-          // relevant_to: concept → project
-          if (projectId) {
-            await store.relate(conceptId, "relevant_to", projectId)
-              .catch(e => swallow("daemon:concept:relevant_to", e));
-          }
-        }
-      })());
-    }
-  }
-
-  // 5. Corrections — high-importance memories
+  // 4. Corrections — high-importance memories, linked to LLM-extracted concepts
   if (Array.isArray(result.corrections) && result.corrections.length > 0) {
     for (const c of result.corrections.slice(0, 5)) {
       if (!c.original || !c.correction) continue;
@@ -230,13 +260,13 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 9, "correction", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction", { taskId, projectId });
+          await linkToConcepts(memId, "about_concept");
         }
       })());
     }
   }
 
-  // 6. User preferences
+  // 5. User preferences
   if (Array.isArray(result.preferences) && result.preferences.length > 0) {
     for (const p of result.preferences.slice(0, 5)) {
       if (!p.preference) continue;
@@ -249,13 +279,13 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "preference", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference", { taskId, projectId });
+          await linkToConcepts(memId, "about_concept");
         }
       })());
     }
   }
 
-  // 7. Artifacts
+  // 6. Artifacts
   if (Array.isArray(result.artifacts) && result.artifacts.length > 0) {
     for (const a of result.artifacts.slice(0, 10)) {
       if (!a.path) continue;
@@ -270,7 +300,7 @@ export async function writeExtractionResults(
         }
         const artId = await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
         if (artId) {
-          await upsertAndLinkConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact", { taskId, projectId });
+          await linkToConcepts(artId, "artifact_mentions");
           // used_in: artifact → project
           if (projectId) {
             await store.relate(artId, "used_in", projectId)
@@ -281,7 +311,7 @@ export async function writeExtractionResults(
     }
   }
 
-  // 8. Decisions
+  // 7. Decisions
   if (Array.isArray(result.decisions) && result.decisions.length > 0) {
     for (const d of result.decisions.slice(0, 6)) {
       if (!d.decision) continue;
@@ -294,13 +324,13 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "decision", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision", { taskId, projectId });
+          await linkToConcepts(memId, "about_concept");
         }
       })());
     }
   }
 
-  // 9. Skills
+  // 8. Skills — get ID back to create skill_from_task + skill_uses_concept edges
   if (Array.isArray(result.skills) && result.skills.length > 0) {
     for (const s of result.skills.slice(0, 3)) {
       if (!s.name || !Array.isArray(s.steps) || s.steps.length === 0) continue;
@@ -313,21 +343,35 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(content); } catch (e) { swallow("daemon:embedSkill", e); }
         }
-        await store.queryExec(
-          `CREATE skill CONTENT $record`,
-          {
-            record: {
-              name: String(s.name).slice(0, 100),
-              description: content,
-              content,
-              steps: s.steps.map((st: string) => String(st).slice(0, 200)),
-              trigger_context: String(s.trigger_context ?? "").slice(0, 200),
-              tags: ["auto-extracted"],
-              session_id: sessionId,
-              ...(emb ? { embedding: emb } : {}),
+        try {
+          const rows = await store.queryFirst<{ id: string }>(
+            `CREATE skill CONTENT $record RETURN id`,
+            {
+              record: {
+                name: String(s.name).slice(0, 100),
+                description: content,
+                content,
+                steps: s.steps.map((st: string) => String(st).slice(0, 200)),
+                trigger_context: String(s.trigger_context ?? "").slice(0, 200),
+                tags: ["auto-extracted"],
+                session_id: sessionId,
+                ...(emb ? { embedding: emb } : {}),
+              },
             },
-          },
-        ).catch(e => swallow.warn("daemon:createSkill", e));
+          );
+          const skillId = rows[0]?.id ? String(rows[0].id) : null;
+          if (skillId) {
+            // skill_from_task: skill → task
+            if (taskId) {
+              await store.relate(skillId, "skill_from_task", taskId)
+                .catch(e => swallow.warn("daemon:skill:skill_from_task", e));
+            }
+            // skill_uses_concept: skill → concept
+            await upsertAndLinkConcepts(skillId, "skill_uses_concept", content, store, embeddings, "daemon:skill:concepts");
+          }
+        } catch (e) {
+          swallow.warn("daemon:createSkill", e);
+        }
       })());
     }
   }
