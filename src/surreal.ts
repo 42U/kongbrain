@@ -579,8 +579,9 @@ export class SurrealStore {
 
     const forwardEdges = [
       // Semantic edges
-      "responds_to", "mentions", "related_to", "narrower", "broader",
-      "about_concept", "reflects_on", "skill_from_task",
+      "responds_to", "tool_result_of", "summarizes",
+      "mentions", "related_to", "narrower", "broader",
+      "about_concept", "reflects_on", "skill_from_task", "skill_uses_concept",
       // Structural pillar edges (Agent→Project→Task→Artifact→Concept)
       "owns", "performed", "task_part_of", "session_task",
       "produced", "derived_from", "relevant_to", "used_in",
