@@ -51,6 +51,7 @@ import { extractSkill } from "./skills.js";
 import { generateReflection } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
 import { swallow } from "./errors.js";
+import { upsertAndLinkConcepts } from "./concept-extract.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -305,6 +306,7 @@ export class KongBrainContextEngine implements ContextEngine {
           }
         } else {
           session.lastAssistantText = text;
+          if (turnId) session.lastAssistantTurnId = turnId;
         }
 
         return { ingested: true };
@@ -506,7 +508,11 @@ export class KongBrainContextEngine implements ContextEngine {
             if (embeddings.isAvailable()) {
               try { embedding = await embeddings.embed(handoffText); } catch { /* ok */ }
             }
-            await store.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
+            const handoffMemId = await store.createMemory(handoffText, embedding, 8, "handoff", session.sessionId);
+            if (handoffMemId && session.surrealSessionId) {
+              await store.relate(handoffMemId, "summarizes", session.surrealSessionId)
+                .catch(e => swallow.warn("midCleanup:summarizes", e));
+            }
           }
         })().catch(e => swallow.warn("midCleanup:handoff", e)),
       );
@@ -548,44 +554,15 @@ function hasSemantic(text: string): boolean {
   return text.split(/\s+/).filter(w => w.length > 2).length >= 3;
 }
 
-// --- Concept extraction (shared with llm-output hook) ---
-
-const CONCEPT_RE = /\b(?:(?:use|using|implement|create|add|configure|setup|install|import)\s+)([A-Z][a-zA-Z0-9_-]+(?:\s+[A-Z][a-zA-Z0-9_-]+)?)/g;
-const TECH_TERMS = /\b(api|database|schema|migration|endpoint|middleware|component|service|module|handler|controller|model|interface|type|class|function|method|hook|plugin|extension|config|cache|queue|worker|daemon)\b/gi;
+// --- Concept extraction (delegates to shared helper) ---
 
 async function extractAndLinkConcepts(
   turnId: string,
   text: string,
   state: GlobalPluginState,
 ): Promise<void> {
-  const concepts = new Set<string>();
-
-  let match: RegExpExecArray | null;
-  const re1 = new RegExp(CONCEPT_RE.source, CONCEPT_RE.flags);
-  while ((match = re1.exec(text)) !== null) {
-    concepts.add(match[1].trim());
-  }
-
-  const re2 = new RegExp(TECH_TERMS.source, TECH_TERMS.flags);
-  while ((match = re2.exec(text)) !== null) {
-    concepts.add(match[1].toLowerCase());
-  }
-
-  if (concepts.size === 0) return;
-
-  for (const conceptText of [...concepts].slice(0, 10)) {
-    try {
-      let embedding: number[] | null = null;
-      if (state.embeddings.isAvailable()) {
-        try { embedding = await state.embeddings.embed(conceptText); } catch { /* ok */ }
-      }
-      const conceptId = await state.store.upsertConcept(conceptText, embedding);
-      if (conceptId) {
-        await state.store.relate(turnId, "mentions", conceptId)
-          .catch(e => swallow("concepts:relate", e));
-      }
-    } catch (e) {
-      swallow("concepts:upsert", e);
-    }
-  }
+  await upsertAndLinkConcepts(
+    turnId, "mentions", text,
+    state.store, state.embeddings, "concepts",
+  );
 }

@@ -38,6 +38,7 @@ export class SessionState {
 
   // Turn tracking
   lastUserTurnId = "";
+  lastAssistantTurnId = "";
   lastUserText = "";
   lastAssistantText = "";
   toolCallCount = 0;

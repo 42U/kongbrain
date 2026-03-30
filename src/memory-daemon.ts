@@ -13,6 +13,7 @@ import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
 import { assertRecordId } from "./surreal.js";
+import { upsertAndLinkConcepts, linkConceptHierarchy } from "./concept-extract.js";
 
 // --- Build the extraction prompt ---
 
@@ -196,7 +197,10 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(c.content); } catch (e) { swallow("daemon:embedConcept", e); }
         }
-        await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
+        const conceptId = await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
+        if (conceptId) {
+          await linkConceptHierarchy(conceptId, c.name, store, "daemon:concept");
+        }
       })());
     }
   }
@@ -212,7 +216,10 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(text); } catch (e) { swallow("daemon:embedCorrection", e); }
         }
-        await store.createMemory(text, emb, 9, "correction", sessionId);
+        const memId = await store.createMemory(text, emb, 9, "correction", sessionId);
+        if (memId) {
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction");
+        }
       })());
     }
   }
@@ -228,7 +235,10 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(text); } catch (e) { swallow("daemon:embedPreference", e); }
         }
-        await store.createMemory(text, emb, 7, "preference", sessionId);
+        const memId = await store.createMemory(text, emb, 7, "preference", sessionId);
+        if (memId) {
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference");
+        }
       })());
     }
   }
@@ -246,7 +256,10 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(`${a.path} ${desc}`); } catch (e) { swallow("daemon:embedArtifact", e); }
         }
-        await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
+        const artId = await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
+        if (artId) {
+          await upsertAndLinkConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact");
+        }
       })());
     }
   }
@@ -262,7 +275,10 @@ export async function writeExtractionResults(
         if (embeddings.isAvailable()) {
           try { emb = await embeddings.embed(text); } catch (e) { swallow("daemon:embedDecision", e); }
         }
-        await store.createMemory(text, emb, 7, "decision", sessionId);
+        const memId = await store.createMemory(text, emb, 7, "decision", sessionId);
+        if (memId) {
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision");
+        }
       })());
     }
   }

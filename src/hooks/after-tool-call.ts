@@ -5,6 +5,7 @@
 import type { GlobalPluginState } from "../state.js";
 import { recordToolOutcome } from "../retrieval-quality.js";
 import { swallow } from "../errors.js";
+import { upsertAndLinkConcepts } from "../concept-extract.js";
 
 export function createAfterToolCallHandler(state: GlobalPluginState) {
   return async (
@@ -30,13 +31,20 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
       ? event.result.slice(0, 500)
       : JSON.stringify(event.result ?? "").slice(0, 500);
 
+    let toolResultTurnId: string | undefined;
     try {
-      await state.store.upsertTurn({
+      toolResultTurnId = await state.store.upsertTurn({
         session_id: session.sessionId,
         role: "tool",
         text: `[${event.toolName}] ${resultText}`,
         embedding: null,
       });
+
+      // Fix 5: Link tool result turn back to the assistant turn that triggered it
+      if (toolResultTurnId && session.lastAssistantTurnId) {
+        await state.store.relate(toolResultTurnId, "tool_result_of", session.lastAssistantTurnId)
+          .catch(e => swallow.warn("hook:afterToolCall:tool_result_of", e));
+      }
     } catch (e) {
       swallow("hook:afterToolCall:store", e);
     }
@@ -92,8 +100,15 @@ async function trackArtifact(
   const artifactId = await state.store.createArtifact(
     (args.path as string) ?? "shell", ext, description, emb,
   );
-  if (artifactId && taskId) {
-    await state.store.relate(taskId, "produced", artifactId)
-      .catch(e => swallow.warn("artifact:relate", e));
+  if (artifactId) {
+    if (taskId) {
+      await state.store.relate(taskId, "produced", artifactId)
+        .catch(e => swallow.warn("artifact:relate", e));
+    }
+    // Fix 2: Link artifact to concepts it mentions
+    await upsertAndLinkConcepts(
+      artifactId, "artifact_mentions", description,
+      state.store, state.embeddings, "artifact:concepts",
+    );
   }
 }
