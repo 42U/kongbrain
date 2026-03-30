@@ -4,14 +4,17 @@
   <img src="KongClaw.png" alt="KongBrain" width="600">
 </p>
 
-[![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)
-[![ClawHub](https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge)](https://clawhub.ai/packages/kongbrain)
-[![GitHub Stars](https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold)](https://github.com/42U/kongbrain)
-[![License: MIT](https://img.shields.io/github/license/42U/kongbrain?style=for-the-badge&logo=opensourceinitiative&color=blue)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
-[![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
-[![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
-[![Tests](https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+<p align="center">
+  <a href="https://www.npmjs.com/package/kongbrain"><img src="https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837" alt="npm"></a>
+  <a href="https://clawhub.ai/packages/kongbrain"><img src="https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge" alt="ClawHub"></a>
+  <a href="https://github.com/42U/kongbrain"><img src="https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold" alt="GitHub Stars"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/github/license/42U/kongbrain?style=for-the-badge&logo=opensourceinitiative&color=blue" alt="License: MIT"></a>
+  <br>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js"></a>
+  <a href="https://surrealdb.com"><img src="https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white" alt="SurrealDB"></a>
+  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge" alt="OpenClaw"></a>
+  <a href="https://vitest.dev"><img src="https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests"></a>
+</p>
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
@@ -21,9 +24,9 @@
 >
 > *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
 
-Replace the default sliding-window context with a persistent memory graph. Vector-embedded, self-scoring, and wired to learn across sessions. KongBrain extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
+Persistent memory graph. Vector-embedded, self-scoring, wired to learn across sessions. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
-Your assistant stops forgetting. Then it starts getting better.
+Your assistant stops forgetting. Then it starts getting smarter.
 
 [Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
 

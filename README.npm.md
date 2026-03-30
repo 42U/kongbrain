@@ -17,9 +17,9 @@
 >
 > *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
 
-Replace the default sliding-window context with a persistent memory graph. Vector-embedded, self-scoring, and wired to learn across sessions. KongBrain extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
+Persistent memory graph. Vector-embedded, self-scoring, wired to learn across sessions. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
-Your assistant stops forgetting. Then it starts getting better.
+Your assistant stops forgetting. Then it starts getting smarter.
 
 [Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
 
