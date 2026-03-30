@@ -20,6 +20,10 @@ package-lock.json
 .env.*
 .kongbrain-handoff.json
 
+# README source files (prepack handles the swap)
+README.npm.md
+README.github.md
+
 # Internal docs
 UPSTREAM-PROPOSALS.md
 publish.sh

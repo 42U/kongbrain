@@ -3,3 +3,4 @@ dist/
 .claude/
 .kongbrain-handoff.json
 publish.sh
+README.github.md

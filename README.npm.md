@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="KongClaw.png" alt="KongBrain" width="400">
-</p>
-
 # KongBrain
 
 [![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)

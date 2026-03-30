@@ -11,6 +11,10 @@ tsconfig.json
 # Large assets
 KongClaw.png
 
+# GitHub-specific files (npm uses README.npm.md swapped in via prepack)
+README.npm.md
+README.github.md
+
 # Env/secrets
 .env
 .env.*
