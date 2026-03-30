@@ -472,6 +472,8 @@ export default definePluginEntry({
           session.sessionId,
           globalState!.complete,
           globalState!.config.thresholds.extractionTimeoutMs,
+          session.taskId,
+          session.projectId,
         );
       } catch (e) {
         swallow.warn("index:startDaemon", e);

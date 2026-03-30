@@ -127,6 +127,7 @@ export class KongBrainContextEngine implements ContextEngine {
           session.daemon = startMemoryDaemon(
             store, embeddings, session.sessionId, this.state.complete,
             this.state.config.thresholds.extractionTimeoutMs,
+            session.taskId, session.projectId,
           );
         }
       } catch (e) {
@@ -285,7 +286,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
           // Extract and link concepts for both user and assistant turns
           if (worthEmbedding) {
-            extractAndLinkConcepts(turnId, text, this.state)
+            extractAndLinkConcepts(turnId, text, this.state, session)
               .catch(e => swallow.warn("ingest:concepts", e));
           }
         }
@@ -560,9 +561,11 @@ async function extractAndLinkConcepts(
   turnId: string,
   text: string,
   state: GlobalPluginState,
+  session?: SessionState,
 ): Promise<void> {
   await upsertAndLinkConcepts(
     turnId, "mentions", text,
     state.store, state.embeddings, "concepts",
+    session ? { taskId: session.taskId, projectId: session.projectId } : undefined,
   );
 }

@@ -13,6 +13,7 @@ import type { CompleteFn } from "./state.js";
 import type { EmbeddingService } from "./embeddings.js";
 import type { SurrealStore } from "./surreal.js";
 import { swallow } from "./errors.js";
+import { upsertAndLinkConcepts } from "./concept-extract.js";
 import { assertRecordId } from "./surreal.js";
 
 // --- Types ---
@@ -117,7 +118,12 @@ export async function extractSkill(
     if (skillId && taskId) {
       await store.relate(skillId, "skill_from_task", taskId).catch(e => swallow.warn("skills:relateSkillTask", e));
     }
-    if (skillId) await supersedeOldSkills(skillId, skillEmb ?? [], store);
+    if (skillId) {
+      await supersedeOldSkills(skillId, skillEmb ?? [], store);
+      // skill_uses_concept: skill → concept
+      const skillDesc = `${parsed.name} ${parsed.description ?? ""} ${(parsed.preconditions ?? "")}`;
+      await upsertAndLinkConcepts(skillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:concepts");
+    }
 
     return skillId || null;
   } catch (e) {
@@ -324,7 +330,11 @@ export async function graduateCausalToSkills(
         { record },
       );
       if (rows[0]?.id) {
-        await supersedeOldSkills(String(rows[0].id), skillEmb ?? [], store);
+        const gradSkillId = String(rows[0].id);
+        await supersedeOldSkills(gradSkillId, skillEmb ?? [], store);
+        // skill_uses_concept: skill → concept
+        const skillDesc = `${parsed.name} ${parsed.description ?? ""}`;
+        await upsertAndLinkConcepts(gradSkillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:graduate:concepts");
         created++;
       }
     }

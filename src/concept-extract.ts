@@ -46,6 +46,7 @@ export async function upsertAndLinkConcepts(
   store: SurrealStore,
   embeddings: EmbeddingService,
   logTag: string,
+  opts?: { taskId?: string; projectId?: string },
 ): Promise<void> {
   const names = extractConceptNames(text);
   if (names.length === 0) return;
@@ -60,6 +61,17 @@ export async function upsertAndLinkConcepts(
       if (conceptId) {
         await store.relate(sourceId, edgeName, conceptId)
           .catch(e => swallow(`${logTag}:relate`, e));
+
+        // derived_from: concept → task
+        if (opts?.taskId) {
+          await store.relate(conceptId, "derived_from", opts.taskId)
+            .catch(e => swallow(`${logTag}:derived_from`, e));
+        }
+        // relevant_to: concept → project
+        if (opts?.projectId) {
+          await store.relate(conceptId, "relevant_to", opts.projectId)
+            .catch(e => swallow(`${logTag}:relevant_to`, e));
+        }
       }
     } catch (e) {
       swallow(`${logTag}:upsert`, e);
@@ -76,6 +88,7 @@ export async function linkConceptHierarchy(
   conceptId: string,
   conceptName: string,
   store: SurrealStore,
+  embeddings: EmbeddingService,
   logTag: string,
 ): Promise<void> {
   try {
@@ -86,6 +99,7 @@ export async function linkConceptHierarchy(
     if (existing.length === 0) return;
 
     const lowerName = conceptName.toLowerCase();
+    let relatedCount = 0;
 
     for (const other of existing) {
       const otherLower = (other.content ?? "").toLowerCase();
@@ -105,6 +119,34 @@ export async function linkConceptHierarchy(
           .catch(e => swallow(`${logTag}:broader`, e));
         await store.relate(otherId, "narrower", conceptId)
           .catch(e => swallow(`${logTag}:narrower`, e));
+      }
+    }
+
+    // related_to: peer-level semantic association via embedding similarity
+    if (embeddings.isAvailable()) {
+      try {
+        const conceptEmb = await embeddings.embed(conceptName);
+        if (conceptEmb?.length) {
+          const similar = await store.queryFirst<{ id: string; score: number }>(
+            `SELECT id, vector::similarity::cosine(embedding, $vec) AS score
+             FROM concept
+             WHERE id != $cid
+               AND embedding != NONE AND array::len(embedding) > 0
+             ORDER BY score DESC
+             LIMIT 3`,
+            { vec: conceptEmb, cid: conceptId },
+          );
+          for (const s of similar) {
+            if (s.score < 0.75) break;
+            const simId = String(s.id);
+            await store.relate(conceptId, "related_to", simId)
+              .catch(e => swallow(`${logTag}:related_to`, e));
+            await store.relate(simId, "related_to", conceptId)
+              .catch(e => swallow(`${logTag}:related_to`, e));
+          }
+        }
+      } catch (e) {
+        swallow(`${logTag}:related_to_search`, e);
       }
     }
   } catch (e) {

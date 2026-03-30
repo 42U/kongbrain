@@ -125,6 +125,8 @@ export async function writeExtractionResults(
   store: SurrealStore,
   embeddings: EmbeddingService,
   priorState: PriorExtractions,
+  taskId?: string,
+  projectId?: string,
 ): Promise<ExtractionCounts> {
   const counts: ExtractionCounts = {
     causal: 0, monologue: 0, resolved: 0, concept: 0,
@@ -199,7 +201,17 @@ export async function writeExtractionResults(
         }
         const conceptId = await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
         if (conceptId) {
-          await linkConceptHierarchy(conceptId, c.name, store, "daemon:concept");
+          await linkConceptHierarchy(conceptId, c.name, store, embeddings, "daemon:concept");
+          // derived_from: concept → task
+          if (taskId) {
+            await store.relate(conceptId, "derived_from", taskId)
+              .catch(e => swallow("daemon:concept:derived_from", e));
+          }
+          // relevant_to: concept → project
+          if (projectId) {
+            await store.relate(conceptId, "relevant_to", projectId)
+              .catch(e => swallow("daemon:concept:relevant_to", e));
+          }
         }
       })());
     }
@@ -218,7 +230,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 9, "correction", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction");
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction", { taskId, projectId });
         }
       })());
     }
@@ -237,7 +249,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "preference", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference");
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference", { taskId, projectId });
         }
       })());
     }
@@ -258,7 +270,12 @@ export async function writeExtractionResults(
         }
         const artId = await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
         if (artId) {
-          await upsertAndLinkConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact");
+          await upsertAndLinkConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact", { taskId, projectId });
+          // used_in: artifact → project
+          if (projectId) {
+            await store.relate(artId, "used_in", projectId)
+              .catch(e => swallow("daemon:artifact:used_in", e));
+          }
         }
       })());
     }
@@ -277,7 +294,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "decision", sessionId);
         if (memId) {
-          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision");
+          await upsertAndLinkConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision", { taskId, projectId });
         }
       })());
     }

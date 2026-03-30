@@ -37,6 +37,8 @@ export function startMemoryDaemon(
   sessionId: string,
   complete: CompleteFn,
   extractionTimeoutMs = 60_000,
+  taskId?: string,
+  projectId?: string,
 ): MemoryDaemon {
   // Use shared store/embeddings from global state (no duplicate connections)
   const store = sharedStore;
@@ -119,7 +121,7 @@ export function startMemoryDaemon(
       }
     }
 
-    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState);
+    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState, taskId, projectId);
     extractedTurnCount = turns.length;
   }
 

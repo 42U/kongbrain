@@ -51,7 +51,7 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
 
     // Auto-track file artifacts from write/edit tools
     if (!isError) {
-      trackArtifact(event.toolName, event.params, session.taskId, state)
+      trackArtifact(event.toolName, event.params, session.taskId, session.projectId, state)
         .catch(e => swallow.warn("hook:afterToolCall:artifact", e));
     }
 
@@ -66,6 +66,7 @@ async function trackArtifact(
   toolName: string,
   args: Record<string, unknown>,
   taskId: string,
+  projectId: string,
   state: GlobalPluginState,
 ): Promise<void> {
   const ARTIFACT_TOOLS: Record<string, string> = {
@@ -105,7 +106,12 @@ async function trackArtifact(
       await state.store.relate(taskId, "produced", artifactId)
         .catch(e => swallow.warn("artifact:relate", e));
     }
-    // Fix 2: Link artifact to concepts it mentions
+    // used_in: artifact → project
+    if (projectId) {
+      await state.store.relate(artifactId, "used_in", projectId)
+        .catch(e => swallow.warn("artifact:used_in", e));
+    }
+    // Link artifact to concepts it mentions
     await upsertAndLinkConcepts(
       artifactId, "artifact_mentions", description,
       state.store, state.embeddings, "artifact:concepts",
