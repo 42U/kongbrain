@@ -92,8 +92,8 @@ export async function linkConceptHierarchy(
   logTag: string,
 ): Promise<void> {
   try {
-    const existing = await store.queryFirst<{ id: string; content: string }>(
-      `SELECT id, content FROM concept WHERE id != $cid LIMIT 50`,
+    const existing = await store.queryFirst<{ id: string; name: string }>(
+      `SELECT id, name FROM concept WHERE id != $cid LIMIT 50`,
       { cid: conceptId },
     );
     if (existing.length === 0) return;
@@ -102,7 +102,7 @@ export async function linkConceptHierarchy(
     let relatedCount = 0;
 
     for (const other of existing) {
-      const otherLower = (other.content ?? "").toLowerCase();
+      const otherLower = (other.name ?? "").toLowerCase();
       if (!otherLower || otherLower === lowerName) continue;
 
       const otherId = String(other.id);

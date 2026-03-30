@@ -197,9 +197,9 @@ export async function writeExtractionResults(
       writeOps.push((async () => {
         let emb: number[] | null = null;
         if (embeddings.isAvailable()) {
-          try { emb = await embeddings.embed(c.content); } catch (e) { swallow("daemon:embedConcept", e); }
+          try { emb = await embeddings.embed(c.name); } catch (e) { swallow("daemon:embedConcept", e); }
         }
-        const conceptId = await store.upsertConcept(c.content, emb, `daemon:${sessionId}`);
+        const conceptId = await store.upsertConcept(c.name, emb, `daemon:${sessionId}`, c.content);
         if (conceptId) {
           await linkConceptHierarchy(conceptId, c.name, store, embeddings, "daemon:concept");
           // derived_from: concept → task
