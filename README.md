@@ -1,7 +1,7 @@
 # KongBrain
 
 <p align="center">
-  <img src="KongClaw.png" alt="KongBrain" width="600">
+  <img src="KongClaw.png" alt="KongBrain" width="1000">
 </p>
 
 <p align="center">
