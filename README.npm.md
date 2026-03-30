@@ -7,9 +7,15 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
-[![Tests](https://img.shields.io/badge/Tests-68_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Tests](https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
+
+> *OpenClaw ships with a lobster brain. It works — lobsters have survived 350 million years — but they also solve problems by walking backwards and occasionally eating each other.*
+>
+> *When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.*
+>
+> *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
 
 Replace the default sliding-window context with a persistent memory graph. Vector-embedded, self-scoring, and wired to learn across sessions. KongBrain extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
