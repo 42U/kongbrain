@@ -15,13 +15,19 @@
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
-OpenClaw ships with a lobster brain. It works — lobsters have survived 350 million years — but they also solve problems by walking backwards and occasionally eating each other. When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.
+> *OpenClaw ships with a lobster brain. It works — lobsters have survived 350 million years — but they also solve problems by walking backwards and occasionally eating each other.*
+>
+> *When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.*
+>
+> *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
+>
+> *Apes remember. Apes use tools. Apes hold grudges about your code style and learn from them. Lobsters eat garbage off the ocean floor and forget about it immediately.*
+>
+> *The surgery takes about 2 minutes. No anesthesia required.*
 
-KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.
+Persistent memory graph. Vector-embedded, self-scoring, wired to learn across sessions. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
-Apes remember. Apes use tools. Apes hold grudges about your code style and learn from them. Lobsters eat garbage off the ocean floor and forget about it immediately.
-
-The surgery takes about 2 minutes. No anesthesia required.
+Your assistant stops forgetting. Then it starts getting smarter.
 
 [Quick Start](#quick-start) | [Architecture](#architecture) | [How It Works](#how-it-works) | [Tools](#tools) | [Development](#development)
 
