@@ -87,8 +87,8 @@ async function processOrphanedSession(
   complete: CompleteFn,
 ): Promise<void> {
   // Load turns for extraction via part_of edges (turn->part_of->session)
-  const turns = await store.queryFirst<{ role: string; text: string; tool_name?: string }>(
-    `SELECT role, text, tool_name, created_at FROM turn
+  const turns = await store.queryFirst<{ id: string; role: string; text: string; tool_name?: string }>(
+    `SELECT id, role, text, tool_name, created_at FROM turn
      WHERE id IN (SELECT VALUE in FROM part_of WHERE out = $sid)
      ORDER BY created_at ASC LIMIT 50`,
     { sid: surrealSessionId },
@@ -100,7 +100,7 @@ async function processOrphanedSession(
 
   // Run daemon extraction
   const priorState: PriorExtractions = { conceptNames: [], artifactPaths: [], skillNames: [] };
-  const turnData = turns.map(t => ({ role: t.role, text: t.text, tool_name: t.tool_name }));
+  const turnData = turns.map(t => ({ turnId: String(t.id), role: t.role, text: t.text, tool_name: t.tool_name }));
   const transcript = buildTranscript(turnData);
   const systemPrompt = buildSystemPrompt(false, false, priorState);
 
@@ -138,7 +138,7 @@ async function processOrphanedSession(
       const keys = Object.keys(result);
       console.warn(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);
       if (keys.length > 0) {
-        await writeExtractionResults(result, surrealSessionId, store, embeddings, priorState);
+        await writeExtractionResults(result, surrealSessionId, store, embeddings, priorState, undefined, undefined, turnData);
         console.warn(`[deferred] wrote extraction results for ${surrealSessionId}`);
       }
     } else {
