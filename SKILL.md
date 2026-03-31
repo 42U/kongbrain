@@ -1,7 +1,7 @@
 ---
 name: kongbrain
 description: Graph-backed persistent memory engine for OpenClaw. Replaces the default context window with SurrealDB + vector embeddings that learn across sessions.
-version: 0.3.12
+version: 0.3.13
 homepage: https://github.com/42U/kongbrain
 metadata:
   openclaw:
@@ -48,23 +48,22 @@ KongBrain gives your OpenClaw agent persistent, structured memory:
 
 See the official install guide: https://surrealdb.com/docs/surrealdb/installation
 
-Platform packages:
-
+macOS:
 ```bash
-# macOS
 brew install surrealdb/tap/surreal
+```
 
-# Linux (Debian/Ubuntu)
-curl -sSf https://install.surrealdb.com | sh
+Linux — see `https://surrealdb.com/docs/surrealdb/installation` for your distro.
 
-# Docker
+Docker:
+```bash
 docker pull surrealdb/surrealdb:latest
 ```
 
 ### Start SurrealDB
 
+Local only (recommended) — use strong credentials in production:
 ```bash
-# Local only (recommended) - use strong credentials in production
 surreal start --user youruser --pass yourpass --bind 127.0.0.1:8000 surrealkv:~/.kongbrain/surreal.db
 ```
 
