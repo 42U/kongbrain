@@ -13,7 +13,7 @@ import type { CompleteFn } from "./state.js";
 import type { EmbeddingService } from "./embeddings.js";
 import type { SurrealStore } from "./surreal.js";
 import { swallow } from "./errors.js";
-import { upsertAndLinkConcepts } from "./concept-extract.js";
+import { linkToRelevantConcepts } from "./concept-extract.js";
 import { assertRecordId } from "./surreal.js";
 
 // --- Types ---
@@ -122,7 +122,7 @@ export async function extractSkill(
       await supersedeOldSkills(skillId, skillEmb ?? [], store);
       // skill_uses_concept: skill → concept
       const skillDesc = `${parsed.name} ${parsed.description ?? ""} ${(parsed.preconditions ?? "")}`;
-      await upsertAndLinkConcepts(skillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:concepts");
+      await linkToRelevantConcepts(skillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:concepts");
     }
 
     return skillId || null;
@@ -334,7 +334,7 @@ export async function graduateCausalToSkills(
         await supersedeOldSkills(gradSkillId, skillEmb ?? [], store);
         // skill_uses_concept: skill → concept
         const skillDesc = `${parsed.name} ${parsed.description ?? ""}`;
-        await upsertAndLinkConcepts(gradSkillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:graduate:concepts");
+        await linkToRelevantConcepts(gradSkillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:graduate:concepts");
         created++;
       }
     }

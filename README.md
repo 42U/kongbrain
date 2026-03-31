@@ -60,14 +60,12 @@ npm install -g openclaw
 
 Install SurrealDB via your platform's package manager (see [surrealdb.com/install](https://surrealdb.com/docs/surrealdb/installation)):
 
+macOS:
 ```bash
-# macOS
 brew install surrealdb/tap/surreal
-
-# Linux (Debian/Ubuntu)
-curl -sSf https://install.surrealdb.com | sh
-export PATH="$HOME/.surrealdb:$PATH"
 ```
+
+Linux — see `https://surrealdb.com/docs/surrealdb/installation` for your distro.
 
 Then start it locally, **change the credentials before use**:
 
@@ -88,11 +86,13 @@ docker run -d --name surrealdb -p 127.0.0.1:8042:8000 \
 
 ### 3. Install KongBrain
 
+From ClawHub (recommended):
 ```bash
-# From ClawHub (recommended)
 openclaw plugins install clawhub:kongbrain
+```
 
-# From npm (fallback)
+From npm:
+```bash
 openclaw plugins install kongbrain
 ```
 

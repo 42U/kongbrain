@@ -3,6 +3,10 @@
   "name": "KongBrain",
   "description": "Graph-backed cognitive context engine with SurrealDB + BGE-M3",
   "kind": "context-engine",
+  "requires": {
+    "bins": ["surreal"],
+    "env": ["SURREAL_URL", "SURREAL_USER", "SURREAL_PASS", "SURREAL_NS", "SURREAL_DB"]
+  },
   "uiHints": {
     "surreal.url": {
       "label": "SurrealDB URL",

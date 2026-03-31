@@ -13,7 +13,7 @@ import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
 import { assertRecordId } from "./surreal.js";
-import { upsertAndLinkConcepts, linkConceptHierarchy } from "./concept-extract.js";
+import { upsertAndLinkConcepts, linkConceptHierarchy, linkToRelevantConcepts } from "./concept-extract.js";
 
 // --- Build the extraction prompt ---
 
@@ -170,28 +170,22 @@ export async function writeExtractionResults(
     }
   }
 
-  // ── Phase 2: Create mentions edges (turn → concept) using LLM concepts ─
-  // Links batch turns to extracted concepts, replacing regex-based extraction.
+  // ── Phase 2: Create mentions edges (turn → concept) via embedding similarity ─
+  // Each turn's text is embedded and matched against existing concepts in the
+  // graph. This replaces the old batch-local linking that only worked when
+  // concepts and turns were extracted in the same batch.
 
-  if (extractedConceptIds.length > 0 && turns && turns.length > 0) {
-    const turnIds = turns.map(t => t.turnId).filter((id): id is string => !!id);
-    for (const turnId of turnIds) {
-      for (const conceptId of extractedConceptIds) {
-        store.relate(turnId, "mentions", conceptId)
-          .catch(e => swallow("daemon:mentions", e));
-      }
+  if (turns && turns.length > 0) {
+    const turnIds = turns.filter(t => t.turnId && t.text).slice(0, 15);
+    for (const t of turnIds) {
+      await linkToRelevantConcepts(
+        t.turnId!, "mentions", t.text!,
+        store, embeddings, "daemon:mentions", 5, 0.65,
+      );
     }
   }
 
   // ── Phase 3: All other extractions in parallel ───────────────────────
-
-  /** Link a source node to all extracted concepts via the given edge. */
-  const linkToConcepts = async (sourceId: string, edgeName: string) => {
-    for (const conceptId of extractedConceptIds) {
-      await store.relate(sourceId, edgeName, conceptId)
-        .catch(e => swallow(`daemon:${edgeName}`, e));
-    }
-  };
 
   const writeOps: Promise<void>[] = [];
 
@@ -260,7 +254,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 9, "correction", sessionId);
         if (memId) {
-          await linkToConcepts(memId, "about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction:about_concept");
         }
       })());
     }
@@ -279,7 +273,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "preference", sessionId);
         if (memId) {
-          await linkToConcepts(memId, "about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference:about_concept");
         }
       })());
     }
@@ -300,7 +294,7 @@ export async function writeExtractionResults(
         }
         const artId = await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
         if (artId) {
-          await linkToConcepts(artId, "artifact_mentions");
+          await linkToRelevantConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact:artifact_mentions");
           // used_in: artifact → project
           if (projectId) {
             await store.relate(artId, "used_in", projectId)
@@ -324,7 +318,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "decision", sessionId);
         if (memId) {
-          await linkToConcepts(memId, "about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision:about_concept");
         }
       })());
     }

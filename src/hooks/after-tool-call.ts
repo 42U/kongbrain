@@ -5,7 +5,7 @@
 import type { GlobalPluginState } from "../state.js";
 import { recordToolOutcome } from "../retrieval-quality.js";
 import { swallow } from "../errors.js";
-import { upsertAndLinkConcepts } from "../concept-extract.js";
+import { linkToRelevantConcepts } from "../concept-extract.js";
 
 export function createAfterToolCallHandler(state: GlobalPluginState) {
   return async (
@@ -128,8 +128,8 @@ async function trackArtifact(
       await state.store.relate(artifactId, "used_in", projectId)
         .catch(e => swallow.warn("artifact:used_in", e));
     }
-    // Link artifact to concepts it mentions
-    await upsertAndLinkConcepts(
+    // Link artifact to concepts it mentions (embedding-based similarity)
+    await linkToRelevantConcepts(
       artifactId, "artifact_mentions", description,
       state.store, state.embeddings, "artifact:concepts",
     );

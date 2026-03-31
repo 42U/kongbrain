@@ -80,6 +80,48 @@ export async function upsertAndLinkConcepts(
 }
 
 /**
+ * Embedding-based concept linking — replaces batch-local linkToConcepts.
+ *
+ * Given a source node (memory, artifact, turn, skill) and its text content,
+ * embeds the text and finds the top-N most similar concepts in the graph,
+ * then creates edges from source → concept via the specified relation.
+ *
+ * This ensures linking works even when relevant concepts were created in
+ * prior batches or sessions — no batch-timing dependency.
+ */
+export async function linkToRelevantConcepts(
+  sourceId: string,
+  edgeName: string,
+  text: string,
+  store: SurrealStore,
+  embeddings: EmbeddingService,
+  logTag: string,
+  limit = 5,
+  threshold = 0.65,
+): Promise<void> {
+  if (!embeddings.isAvailable() || !text) return;
+  try {
+    const vec = await embeddings.embed(text);
+    if (!vec?.length) return;
+    const matches = await store.queryFirst<{ id: string; score: number }>(
+      `SELECT id, vector::similarity::cosine(embedding, $vec) AS score
+       FROM concept
+       WHERE embedding != NONE AND array::len(embedding) > 0
+       ORDER BY score DESC
+       LIMIT $lim`,
+      { vec, lim: limit },
+    );
+    for (const m of matches) {
+      if (m.score < threshold) break;
+      await store.relate(sourceId, edgeName, String(m.id))
+        .catch(e => swallow(`${logTag}:relate`, e));
+    }
+  } catch (e) {
+    swallow(`${logTag}:embed`, e);
+  }
+}
+
+/**
  * Link a newly-upserted concept to existing concepts via narrower/broader
  * edges when one concept's name is a substring of the other (indicating a
  * parent-child hierarchy, e.g. "React" → "React hooks").
