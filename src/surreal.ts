@@ -692,9 +692,17 @@ export class SurrealStore {
     );
     if (rows.length > 0) {
       const id = String(rows[0].id);
-      await this.queryExec(
-        `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
-      );
+      // Backfill embedding if the existing concept is missing one
+      if (embedding?.length) {
+        await this.queryExec(
+          `UPDATE ${id} SET access_count += 1, last_accessed = time::now(), embedding = IF embedding IS NONE OR array::len(embedding) = 0 THEN $emb ELSE embedding END`,
+          { emb: embedding },
+        );
+      } else {
+        await this.queryExec(
+          `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
+        );
+      }
       return id;
     }
     const emb = embedding?.length ? embedding : undefined;
