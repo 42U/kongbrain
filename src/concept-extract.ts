@@ -98,10 +98,11 @@ export async function linkToRelevantConcepts(
   logTag: string,
   limit = 5,
   threshold = 0.65,
+  precomputedVec?: number[] | null,
 ): Promise<void> {
   if (!embeddings.isAvailable() || !text) return;
   try {
-    const vec = await embeddings.embed(text);
+    const vec = precomputedVec?.length ? precomputedVec : await embeddings.embed(text);
     if (!vec?.length) return;
     const matches = await store.queryFirst<{ id: string; score: number }>(
       `SELECT id, vector::similarity::cosine(embedding, $vec) AS score

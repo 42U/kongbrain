@@ -122,7 +122,7 @@ export async function extractSkill(
       await supersedeOldSkills(skillId, skillEmb ?? [], store);
       // skill_uses_concept: skill → concept
       const skillDesc = `${parsed.name} ${parsed.description ?? ""} ${(parsed.preconditions ?? "")}`;
-      await linkToRelevantConcepts(skillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:concepts");
+      await linkToRelevantConcepts(skillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:concepts", 5, 0.65, skillEmb);
     }
 
     return skillId || null;
@@ -334,7 +334,7 @@ export async function graduateCausalToSkills(
         await supersedeOldSkills(gradSkillId, skillEmb ?? [], store);
         // skill_uses_concept: skill → concept
         const skillDesc = `${parsed.name} ${parsed.description ?? ""}`;
-        await linkToRelevantConcepts(gradSkillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:graduate:concepts");
+        await linkToRelevantConcepts(gradSkillId, "skill_uses_concept", skillDesc, store, embeddings, "skills:graduate:concepts", 5, 0.65, skillEmb);
         created++;
       }
     }

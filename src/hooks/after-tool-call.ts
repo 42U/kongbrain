@@ -132,6 +132,7 @@ async function trackArtifact(
     await linkToRelevantConcepts(
       artifactId, "artifact_mentions", description,
       state.store, state.embeddings, "artifact:concepts",
+      5, 0.65, emb,
     );
   }
 }

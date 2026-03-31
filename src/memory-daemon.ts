@@ -13,7 +13,7 @@ import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import { swallow } from "./errors.js";
 import { assertRecordId } from "./surreal.js";
-import { upsertAndLinkConcepts, linkConceptHierarchy, linkToRelevantConcepts } from "./concept-extract.js";
+import { linkConceptHierarchy, linkToRelevantConcepts } from "./concept-extract.js";
 
 // --- Build the extraction prompt ---
 
@@ -254,7 +254,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 9, "correction", sessionId);
         if (memId) {
-          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction:about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:correction:about_concept", 5, 0.65, emb);
         }
       })());
     }
@@ -273,7 +273,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "preference", sessionId);
         if (memId) {
-          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference:about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:preference:about_concept", 5, 0.65, emb);
         }
       })());
     }
@@ -294,7 +294,7 @@ export async function writeExtractionResults(
         }
         const artId = await store.createArtifact(a.path, a.action ?? "modified", desc, emb);
         if (artId) {
-          await linkToRelevantConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact:artifact_mentions");
+          await linkToRelevantConcepts(artId, "artifact_mentions", `${a.path} ${desc}`, store, embeddings, "daemon:artifact:artifact_mentions", 5, 0.65, emb);
           // used_in: artifact → project
           if (projectId) {
             await store.relate(artId, "used_in", projectId)
@@ -318,7 +318,7 @@ export async function writeExtractionResults(
         }
         const memId = await store.createMemory(text, emb, 7, "decision", sessionId);
         if (memId) {
-          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision:about_concept");
+          await linkToRelevantConcepts(memId, "about_concept", text, store, embeddings, "daemon:decision:about_concept", 5, 0.65, emb);
         }
       })());
     }
@@ -361,7 +361,7 @@ export async function writeExtractionResults(
                 .catch(e => swallow.warn("daemon:skill:skill_from_task", e));
             }
             // skill_uses_concept: skill → concept
-            await upsertAndLinkConcepts(skillId, "skill_uses_concept", content, store, embeddings, "daemon:skill:concepts");
+            await linkToRelevantConcepts(skillId, "skill_uses_concept", content, store, embeddings, "daemon:skill:concepts", 5, 0.65, emb);
           }
         } catch (e) {
           swallow.warn("daemon:createSkill", e);

@@ -11,6 +11,9 @@ export class EmbeddingService {
   private model: LlamaModel | null = null;
   private ctx: LlamaEmbeddingContext | null = null;
   private ready = false;
+  /** LRU embedding cache keyed by text, capped at maxCacheSize entries. */
+  private cache = new Map<string, number[]>();
+  private readonly maxCacheSize = 512;
 
   constructor(private readonly config: EmbeddingConfig) {}
 
@@ -39,8 +42,21 @@ export class EmbeddingService {
 
   async embed(text: string): Promise<number[]> {
     if (!this.ready || !this.ctx) throw new Error("Embeddings not initialized");
+    const cached = this.cache.get(text);
+    if (cached) {
+      // Move to end for LRU freshness
+      this.cache.delete(text);
+      this.cache.set(text, cached);
+      return cached;
+    }
     const result = await this.ctx.getEmbeddingFor(text);
-    return Array.from(result.vector);
+    const vec = Array.from(result.vector);
+    // Evict oldest if at capacity
+    if (this.cache.size >= this.maxCacheSize) {
+      this.cache.delete(this.cache.keys().next().value!);
+    }
+    this.cache.set(text, vec);
+    return vec;
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
@@ -61,6 +77,7 @@ export class EmbeddingService {
       await this.ctx?.dispose();
       await this.model?.dispose();
       this.ready = false;
+      this.cache.clear();
     } catch (e) {
       swallow("embeddings:dispose", e);
     }
