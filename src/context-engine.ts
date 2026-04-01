@@ -48,6 +48,7 @@ import { runDeferredCleanup } from "./deferred-cleanup.js";
 import { extractSkill } from "./skills.js";
 import { generateReflection } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
+import { attemptGraduation, evolveSoul, checkStageTransition } from "./soul.js";
 import { swallow } from "./errors.js";
 
 export class KongBrainContextEngine implements ContextEngine {
@@ -566,6 +567,55 @@ export class KongBrainContextEngine implements ContextEngine {
             }
           }
         })().catch(e => swallow.warn("midCleanup:handoff", e)),
+      );
+
+      // Soul graduation + stage transition — run mid-session so marathon
+      // sessions don't miss milestones that would normally fire at session_end
+      cleanupOps.push(
+        (async () => {
+          const gradResult = await attemptGraduation(store, this.state.complete);
+          if (gradResult?.graduated && gradResult.soul) {
+            if (gradResult.report.stage === "ready") {
+              // New graduation — persist event for celebration
+              await store.queryExec(
+                `CREATE graduation_event CONTENT $data`,
+                {
+                  data: {
+                    session_id: session.sessionId,
+                    acknowledged: false,
+                    quality_score: gradResult.report.qualityScore,
+                    volume_score: gradResult.report.volumeScore,
+                    stage: gradResult.report.stage,
+                    created_at: new Date().toISOString(),
+                  },
+                },
+              );
+              if (this.state.enqueueSystemEvent) {
+                this.state.enqueueSystemEvent(
+                  "[GRADUATION] KongBrain has achieved soul graduation! " +
+                  "The agent will share this milestone when ready.",
+                  { sessionKey: session.sessionKey },
+                );
+              }
+            } else {
+              // Pre-existing soul — check for evolution
+              await evolveSoul(store, this.state.complete);
+            }
+          }
+        })().catch(e => swallow.warn("midCleanup:soulGraduation", e)),
+      );
+
+      cleanupOps.push(
+        (async () => {
+          const transition = await checkStageTransition(store);
+          if (transition.transitioned && this.state.enqueueSystemEvent) {
+            this.state.enqueueSystemEvent(
+              `[MATURITY] Stage transition: ${transition.previousStage ?? "nascent"} → ${transition.currentStage}. ` +
+              `Volume: ${transition.report.met.length}/7 | Quality: ${transition.report.qualityScore.toFixed(2)}`,
+              { sessionKey: session.sessionKey },
+            );
+          }
+        })().catch(e => swallow.warn("midCleanup:stageTransition", e)),
       );
 
       // Don't await — let cleanup run in background
