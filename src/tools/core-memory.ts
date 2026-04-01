@@ -46,7 +46,7 @@ export function createCoreMemoryToolDef(state: GlobalPluginState, session: Sessi
             }
             const formatted = entries.map((e, i) => {
               const sid = e.session_id ? ` session:${e.session_id}` : "";
-              return `${i + 1}. [T${e.tier}/${e.category}/p${e.priority}${sid}] ${e.id}\n   ${e.text.slice(0, 200)}`;
+              return `${i + 1}. [T${e.tier}/${e.category}/p${e.priority}${sid}] ${e.id}\n   ${e.text.slice(0, 120)}`;
             }).join("\n\n");
             return {
               content: [{ type: "text" as const, text: `${entries.length} core memory entries:\n\n${formatted}` }],

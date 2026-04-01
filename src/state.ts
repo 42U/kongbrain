@@ -72,6 +72,17 @@ export class SessionState {
   // Pending tool args for artifact tracking
   readonly pendingToolArgs = new Map<string, unknown>();
 
+  // Tool call optimization state (claw-code patterns)
+  /** Query vector from this turn's context retrieval — used to detect redundant recall calls. */
+  lastQueryVec: number[] | null = null;
+  /** Summary of what graphTransformContext injected — shown in planning gate. */
+  lastRetrievalSummary = "";
+  /** API request cycle counter — hard cap prevents runaway token spend. */
+  apiCycleCount = 0;
+  /** Tracks which static context sections the model has already seen in the conversation window.
+   *  Persists across turns (NOT cleared in resetTurn) — cleared only when messages drop from window. */
+  readonly injectedSections = new Set<string>();
+
   // 5-pillar IDs (populated at bootstrap)
   agentId = "";
   projectId = "";
@@ -92,6 +103,10 @@ export class SessionState {
     this.softInterrupted = false;
     this.turnStartMs = Date.now();
     this.pendingThinking.length = 0;
+    this.lastRetrievalSummary = "";
+    this.apiCycleCount = 0;
+    // NOTE: lastQueryVec and injectedSections are NOT cleared here —
+    // they persist across turns within the session.
   }
 }
 

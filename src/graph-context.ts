@@ -62,6 +62,7 @@ const CONVERSATION_SHARE = 0.50;
 const RETRIEVAL_SHARE = 0.30;
 const CORE_MEMORY_SHARE = 0.15;
 const CORE_MEMORY_TTL = 300_000;
+const MAX_ITEM_CHARS = 1200; // ~350 tokens per item cap (claw-code: MAX_INSTRUCTION_FILE_CHARS)
 const MIN_RELEVANCE_SCORE = 0.35;
 const MIN_COSINE = 0.25;
 
@@ -149,25 +150,37 @@ function extractLastUserText(messages: AgentMessage[]): string | null {
   return null;
 }
 
+/** Estimate char count for a single content block (claw-code: per-block-type estimation). */
+function blockCharLen(c: any): number {
+  if (c.type === "text") return c.text.length;
+  if (c.type === "thinking") return c.thinking.length;
+  if (c.type === "toolCall") {
+    // Count tool name + serialized args (claw-code: compact.rs:326-338)
+    return (c.name?.length ?? 0) + (c.args ? JSON.stringify(c.args).length : 0);
+  }
+  if (c.type === "toolResult" && Array.isArray(c.content)) {
+    let len = 0;
+    for (const rc of c.content) {
+      if (rc.type === "text") len += rc.text.length;
+      else len += 100;
+    }
+    return len;
+  }
+  return 100; // image, etc.
+}
+
 function estimateTokens(messages: AgentMessage[]): number {
   let chars = 0;
   for (const msg of messages) {
-    for (const c of msgContentBlocks(msg)) {
-      if (c.type === "text") chars += c.text.length;
-      else if (c.type === "thinking") chars += c.thinking.length;
-      else chars += 100;
-    }
+    for (const c of msgContentBlocks(msg)) chars += blockCharLen(c);
+    chars += 4; // per-message structural overhead
   }
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
 function msgCharLen(msg: AgentMessage): number {
   let len = 0;
-  for (const c of msgContentBlocks(msg)) {
-    if (c.type === "text") len += c.text.length;
-    else if (c.type === "thinking") len += c.thinking.length;
-    else len += 100;
-  }
+  for (const c of msgContentBlocks(msg)) len += blockCharLen(c);
   return len;
 }
 
@@ -199,7 +212,7 @@ function accessBoost(accessCount: number | undefined): number {
   return Math.log1p(accessCount ?? 0);
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
@@ -217,6 +230,19 @@ function buildRulesSuffix(session: SessionState): string {
     ? "unlimited" : String(Math.max(0, session.toolLimit - session.toolCallCount));
   const urgency = session.toolLimit !== Infinity && (session.toolLimit - session.toolCallCount) <= 3
     ? "\n⚠ WRAP UP or check in with user." : "";
+
+  // After first exposure, send only the budget line (claw-code: don't re-send static content)
+  if (session.injectedSections.has("rules_full")) {
+    return (
+      "\n<rules_reminder>" +
+      `\nBudget: ${session.toolCallCount} used, ${remaining} remaining.${urgency}` +
+      "\nCombine steps. If context already answers it, zero calls." +
+      "\n</rules_reminder>"
+    );
+  }
+
+  // First time — full examples
+  session.injectedSections.add("rules_full");
   return (
     "\n<rules_reminder>" +
     `\nBudget: ${session.toolCallCount} used, ${remaining} remaining.${urgency}` +
@@ -430,7 +456,7 @@ function takeWithConstraints(ranked: ScoredResult[], budgetTokens: number, maxIt
   for (const r of ranked) {
     if (selected.length >= maxItems) break;
     if ((r.finalScore ?? 0) < MIN_RELEVANCE_SCORE && selected.length > 0) break;
-    const len = r.text?.length ?? 0;
+    const len = Math.min(r.text?.length ?? 0, MAX_ITEM_CHARS); // Cap per-item size for budget accounting
     if (used + len > budgetChars && selected.length > 0) break;
     selected.push(r);
     used += len;
@@ -532,27 +558,42 @@ async function formatContextMessage(
   const sections: string[] = [];
 
   // Pillar context — structural awareness of who/what/where
-  const pillarLines: string[] = [];
-  if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
-  if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
-  if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
-  if (pillarLines.length > 0) {
-    sections.push(
-      "GRAPH PILLARS (your structural context):\n" +
-      `  ${pillarLines.join(" | ")}\n` +
-      "  IKONG cognitive architecture:\n" +
-      "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
-      "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
-      "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
-      "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
-      "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
-    );
+  // Skip if model already has it in the conversation window (claw-code static section dedup)
+  if (!session.injectedSections.has("ikong")) {
+    const pillarLines: string[] = [];
+    if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
+    if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
+    if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
+    if (pillarLines.length > 0) {
+      sections.push(
+        "GRAPH PILLARS (your structural context):\n" +
+        `  ${pillarLines.join(" | ")}\n` +
+        "  IKONG cognitive architecture:\n" +
+        "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
+        "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
+        "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
+        "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
+        "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
+      );
+      session.injectedSections.add("ikong");
+    }
   }
 
-  const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
-  if (t0Section) sections.push(t0Section);
-  const t1Section = formatTierSection(tier1Entries, "SESSION CONTEXT (pinned for this session)");
-  if (t1Section) sections.push(t1Section);
+  // Core directives — skip if model already has them
+  if (!session.injectedSections.has("tier0")) {
+    const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
+    if (t0Section) {
+      sections.push(t0Section);
+      session.injectedSections.add("tier0");
+    }
+  }
+  if (!session.injectedSections.has("tier1")) {
+    const t1Section = formatTierSection(tier1Entries, "SESSION CONTEXT (pinned for this session)");
+    if (t1Section) {
+      sections.push(t1Section);
+      session.injectedSections.add("tier1");
+    }
+  }
 
   // Cognitive directives
   const directives = getPendingDirectives(session);
@@ -607,6 +648,10 @@ async function formatContextMessage(
       const score = n.finalScore != null ? ` (relevance: ${(n.finalScore * 100).toFixed(0)}%)` : "";
       const via = n.fromNeighbor ? " [via graph link]" : "";
       let text = n.text ?? "";
+      // Truncate oversized items (claw-code: MAX_INSTRUCTION_FILE_CHARS pattern)
+      if (text.length > MAX_ITEM_CHARS) {
+        text = text.slice(0, MAX_ITEM_CHARS) + "... [truncated]";
+      }
       if (key === "past_turns") {
         text = text.replace(/^\[(user|assistant)\] /, "[past_$1] ");
       }
@@ -614,6 +659,23 @@ async function formatContextMessage(
       return `  - ${text}${score}${via}${age}`;
     });
     sections.push(`${label}:\n${formatted.join("\n")}`);
+  }
+
+  // Injection manifest — tell the model what's already retrieved so it doesn't call recall redundantly
+  // (claw-code pattern: route_prompt pre-computes and shows available results)
+  const manifest: string[] = [];
+  for (const key of sortedKeys) {
+    const items = groups[key];
+    if (items.length > 0) manifest.push(`${LABELS[key] ?? key}: ${items.length}`);
+  }
+  if (tier0Entries.length > 0) manifest.push(`core_directives: ${tier0Entries.length}`);
+  if (tier1Entries.length > 0) manifest.push(`session_context: ${tier1Entries.length}`);
+  if (manifest.length > 0) {
+    sections.push(
+      "ALREADY RETRIEVED (do NOT call recall for these — they are above):\n" +
+      `  ${manifest.join(", ")}\n` +
+      "Only call recall if you need something SPECIFIC that isn't covered above."
+    );
   }
 
   const text =
@@ -646,7 +708,7 @@ function truncateToolResult(msg: AgentMessage, maxChars: number): AgentMessage {
   return { ...msg, content };
 }
 
-function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWindow: number): AgentMessage[] {
+function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWindow: number, session?: SessionState): AgentMessage[] {
   const budgetChars = maxTokens * CHARS_PER_TOKEN;
   const TOOL_RESULT_MAX = Math.round(contextWindow * 0.03);
 
@@ -718,6 +780,16 @@ function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWind
     }
   }
 
+  // Detect if old messages (containing previous context injection) were dropped from the window.
+  // If so, clear injectedSections so static content gets re-injected next turn.
+  if (session && messages.length > 0 && groups.length > 0) {
+    const firstOriginal = groups[0];
+    const firstSelected = selectedGroups[0];
+    if (firstOriginal !== firstSelected) {
+      session.injectedSections.clear();
+    }
+  }
+
   return selectedGroups.flat();
 }
 
@@ -786,20 +858,6 @@ async function graphTransformInner(
   budgets: Budgets,
   _signal?: AbortSignal,
 ): Promise<GraphTransformResult> {
-  // Load tiered core memory
-  let tier0: CoreMemoryEntry[] = [];
-  let tier1: CoreMemoryEntry[] = [];
-  try {
-    [tier0, tier1] = await Promise.all([
-      store.getAllCoreMemory(0),
-      store.getAllCoreMemory(1),
-    ]);
-    tier0 = applyCoreBudget(tier0, getTier0BudgetChars(budgets));
-    tier1 = applyCoreBudget(tier1, getTier1BudgetChars(budgets));
-  } catch (e) {
-    console.warn("[warn] Core memory load failed:", e);
-  }
-
   function makeStats(
     sent: AgentMessage[], graphNodes: number, neighborNodes: number,
     recentTurnCount: number, mode: ContextStats["mode"], prefetchHit = false,
@@ -814,12 +872,59 @@ async function graphTransformInner(
     };
   }
 
+  // Derive retrieval config from session's current adaptive config
+  const config = session.currentConfig;
+  const skipRetrieval = config?.skipRetrieval ?? false;
+
+  // Skip retrieval fast path — avoid DB queries entirely when model already has core memory
+  // (claw-code pattern: simple_mode skips the load, not load-then-discard)
+  if (skipRetrieval) {
+    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+    // If model already saw core memory, just return recent turns + compressed rules. Zero DB queries.
+    if (session.injectedSections.has("tier0")) {
+      return { messages: injectRulesSuffix(recentTurns, session), stats: makeStats(recentTurns, 0, 0, recentTurns.length, "passthrough") };
+    }
+    // First turn or after compaction cleared injectedSections — load and inject
+    let tier0: CoreMemoryEntry[] = [];
+    let tier1: CoreMemoryEntry[] = [];
+    try {
+      [tier0, tier1] = await Promise.all([
+        store.getAllCoreMemory(0),
+        store.getAllCoreMemory(1),
+      ]);
+      tier0 = applyCoreBudget(tier0, getTier0BudgetChars(budgets));
+      tier1 = applyCoreBudget(tier1, getTier1BudgetChars(budgets));
+    } catch (e) {
+      console.warn("[warn] Core memory load failed:", e);
+    }
+    if (tier0.length > 0 || tier1.length > 0) {
+      const coreContext = await formatContextMessage([], store, session, "", tier0, tier1);
+      const result = [coreContext, ...recentTurns];
+      return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, recentTurns.length, "passthrough") };
+    }
+    return { messages: injectRulesSuffix(recentTurns, session), stats: makeStats(recentTurns, 0, 0, recentTurns.length, "passthrough") };
+  }
+
+  // Load tiered core memory (full retrieval path)
+  let tier0: CoreMemoryEntry[] = [];
+  let tier1: CoreMemoryEntry[] = [];
+  try {
+    [tier0, tier1] = await Promise.all([
+      store.getAllCoreMemory(0),
+      store.getAllCoreMemory(1),
+    ]);
+    tier0 = applyCoreBudget(tier0, getTier0BudgetChars(budgets));
+    tier1 = applyCoreBudget(tier1, getTier1BudgetChars(budgets));
+  } catch (e) {
+    console.warn("[warn] Core memory load failed:", e);
+  }
+
   // Graceful degradation
   const embeddingsUp = embeddings.isAvailable();
   const surrealUp = store.isAvailable();
 
   if (!embeddingsUp || !surrealUp) {
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow);
+    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
     if (tier0.length > 0 || tier1.length > 0) {
       const coreContext = await formatContextMessage([], store, session, "", tier0, tier1);
       const result = [coreContext, ...recentTurns];
@@ -833,9 +938,6 @@ async function graphTransformInner(
     return { messages: injectRulesSuffix(messages, session), stats: makeStats(messages, 0, 0, messages.length, "passthrough") };
   }
 
-  // Derive retrieval config from session's current adaptive config
-  const config = session.currentConfig;
-  const skipRetrieval = config?.skipRetrieval ?? false;
   const currentIntent = config?.intent ?? "unknown";
   const baseLimits = config?.vectorSearchLimits ?? {
     turn: 25, identity: 10, concept: 20, memory: 20, artifact: 10,
@@ -852,21 +954,9 @@ async function graphTransformInner(
   };
   let tokenBudget = Math.min(config?.tokenBudget ?? 6000, budgets.retrieval);
 
-  // Pressure-based adaptive scaling
-  // (In Phase 2, _usedTokens will be tracked per-session via hooks)
-
-  if (skipRetrieval) {
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow);
-    if (tier0.length > 0 || tier1.length > 0) {
-      const coreContext = await formatContextMessage([], store, session, "", tier0, tier1);
-      const result = [coreContext, ...recentTurns];
-      return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, recentTurns.length, "passthrough") };
-    }
-    return { messages: injectRulesSuffix(recentTurns, session), stats: makeStats(recentTurns, 0, 0, recentTurns.length, "passthrough") };
-  }
-
   try {
     const queryVec = await buildContextualQueryVec(queryText, messages, embeddings);
+    session.lastQueryVec = queryVec; // Stash for redundant recall detection
 
     // Prefetch cache check
     const cached = getCachedContext(queryVec);
@@ -891,7 +981,7 @@ async function graphTransformInner(
         const reflCtx = cached.reflections.length > 0 ? formatReflectionContext(cached.reflections) : "";
 
         const injectedContext = await formatContextMessage(contextNodes, store, session, skillCtx + reflCtx, tier0, tier1);
-        const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow);
+        const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
         const result = [injectedContext, ...recentTurns];
         return { messages: injectRulesSuffix(result, session), stats: makeStats(result, contextNodes.length, 0, recentTurns.length, "graph", true) };
       }
@@ -948,7 +1038,7 @@ async function graphTransformInner(
     contextNodes = await ensureRecentTurns(contextNodes, session.sessionId, store);
 
     if (contextNodes.length === 0) {
-      const result = getRecentTurns(messages, budgets.conversation, contextWindow);
+      const result = getRecentTurns(messages, budgets.conversation, contextWindow, session);
       return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, result.length, "graph") };
     }
 
@@ -980,7 +1070,7 @@ async function graphTransformInner(
     } catch (e) { swallow("graph-context:reflections", e); }
 
     const injectedContext = await formatContextMessage(contextNodes, store, session, skillContext + reflectionContext, tier0, tier1);
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow);
+    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
     const result = [injectedContext, ...recentTurns];
     return {
       messages: injectRulesSuffix(result, session),
@@ -993,7 +1083,7 @@ async function graphTransformInner(
     };
   } catch (err) {
     console.error("Graph context error, falling back:", err);
-    const result = getRecentTurns(messages, budgets.conversation, contextWindow);
+    const result = getRecentTurns(messages, budgets.conversation, contextWindow, session);
     return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, result.length, "recency-only") };
   }
 }

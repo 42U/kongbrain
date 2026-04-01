@@ -34,7 +34,7 @@ export function createRecallToolDef(state: GlobalPluginState, session: SessionSt
         return { content: [{ type: "text" as const, text: "Memory system unavailable." }], details: null };
       }
 
-      const maxResults = Math.min(params.limit ?? 5, 15);
+      const maxResults = Math.min(params.limit ?? 3, 15);
 
       try {
         const queryVec = await embeddings.embed(params.query);
@@ -87,7 +87,7 @@ export function createRecallToolDef(state: GlobalPluginState, session: SessionSt
           const tag = r.table === "turn" ? `[${r.role ?? "turn"}]` : `[${r.table}]`;
           const time = r.timestamp ? ` (${new Date(r.timestamp).toLocaleDateString()})` : "";
           const score = r.score ? ` score:${r.score.toFixed(2)}` : "";
-          return `${i + 1}. ${tag}${time}${score}\n   ${(r.text ?? "").slice(0, 500)}`;
+          return `${i + 1}. ${tag}${time}${score}\n   ${(r.text ?? "").slice(0, 300)}`;
         }).join("\n\n");
 
         return {

@@ -160,6 +160,11 @@ export class KongBrainContextEngine implements ContextEngine {
       contextWindow,
     });
 
+    // Stash retrieval summary for planning gate (claw-code pattern: pre-compute and show)
+    session.lastRetrievalSummary = stats.graphNodes > 0
+      ? `${stats.graphNodes} context items + ${stats.neighborNodes} neighbors injected (${stats.mode} mode)`
+      : "no graph context retrieved this turn";
+
     // Build system prompt additions
     const additions: string[] = [];
 

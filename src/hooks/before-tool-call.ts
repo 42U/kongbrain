@@ -8,9 +8,12 @@
 
 import type { GlobalPluginState } from "../state.js";
 import { recordToolCall } from "../orchestrator.js";
+import { cosineSimilarity } from "../graph-context.js";
 
 const DEFAULT_TOOL_LIMIT = 10;
 const CLASSIFICATION_LIMITS: Record<string, number> = { LOOKUP: 3, EDIT: 4, REFACTOR: 8 };
+const API_CYCLE_CAP = 16;
+const RECALL_SIMILARITY_THRESHOLD = 0.80;
 
 export function createBeforeToolCallHandler(state: GlobalPluginState) {
   return async (
@@ -30,6 +33,7 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
 
     session.toolCallCount++;
     session.toolCallsSinceLastText++;
+    session.apiCycleCount++;
 
     // Record for steering analysis
     recordToolCall(session, event.toolName);
@@ -46,6 +50,14 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
       };
     }
 
+    // API cycle cap (claw-code pattern: max_iterations — conversation.rs:119)
+    if (session.apiCycleCount > API_CYCLE_CAP) {
+      return {
+        block: true,
+        blockReason: `Hard API cycle cap (${API_CYCLE_CAP}) reached. Deliver your answer now.`,
+      };
+    }
+
     // Tool limit
     if (session.toolCallCount > session.toolLimit) {
       return {
@@ -54,14 +66,49 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
       };
     }
 
+    // Intent-based tool gating (claw-code pattern: simple_mode/MCP toggle — tools.py:62-72)
+    // On skipRetrieval turns, recall has nothing to add — context was skipped intentionally
+    if (event.toolName === "recall" && session.currentConfig?.skipRetrieval) {
+      return {
+        block: true,
+        blockReason: "Context retrieval was skipped this turn (continuation/trivial input). " +
+          "Recall would return the same results as previous turns. Continue with what you have.",
+      };
+    }
+
+    // Redundant recall blocker (claw-code pattern: _infer_permission_denials — runtime.py:169-174)
+    // Block recall when its query would return the same results as context retrieval
+    if (event.toolName === "recall" && session.lastQueryVec) {
+      const recallQuery = (event.params as { query?: string }).query;
+      if (recallQuery && typeof recallQuery === "string" && recallQuery.length > 5) {
+        try {
+          const recallVec = await state.embeddings.embed(recallQuery);
+          const sim = cosineSimilarity(session.lastQueryVec, recallVec);
+          if (sim > RECALL_SIMILARITY_THRESHOLD) {
+            return {
+              block: true,
+              blockReason:
+                `This recall query is ${(sim * 100).toFixed(0)}% similar to the context already retrieved this turn. ` +
+                "The results are in <graph_context> above. Read what you have. " +
+                "Only call recall with a DIFFERENT query targeting something specific not already covered.",
+            };
+          }
+        } catch { /* fail-open: allow recall if embedding fails */ }
+      }
+    }
+
     // Planning gate: model must output text before first tool call
     if (textLengthSoFar === 0 && toolIndex === 0) {
+      const retrievalNote = session.lastRetrievalSummary
+        ? `\nContext already injected: ${session.lastRetrievalSummary}. Read <graph_context> before calling tools.`
+        : "";
       return {
         block: true,
         blockReason:
           "PLANNING GATE — You must announce your plan before making tool calls.\n" +
           "1. Classify: LOOKUP (3 calls max), EDIT (4 max), REFACTOR (8 max)\n" +
-          "2. STATE WHAT YOU ALREADY KNOW from injected memory/context — if you have prior knowledge about these files, say so\n" +
+          "2. STATE WHAT YOU ALREADY KNOW from injected memory/context — if you have prior knowledge about these files, say so" +
+          retrievalNote + "\n" +
           "3. List each planned call and what SPECIFIC GAP it fills that memory doesn't cover\n" +
           "4. Every step still happens, but COMBINED. Edit + test in one bash call, not two.\n" +
           "If injected context already answers the question, you may need ZERO tool calls.\n" +
