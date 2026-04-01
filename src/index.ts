@@ -20,6 +20,7 @@ import { createBeforePromptBuildHandler } from "./hooks/before-prompt-build.js";
 import { createBeforeToolCallHandler } from "./hooks/before-tool-call.js";
 import { createAfterToolCallHandler } from "./hooks/after-tool-call.js";
 import { createLlmOutputHandler } from "./hooks/llm-output.js";
+import { createSubagentSpawnedHandler, createSubagentEndedHandler } from "./hooks/subagent-lifecycle.js";
 import { startMemoryDaemon } from "./daemon-manager.js";
 import { seedIdentity } from "./identity.js";
 import { seedCognitiveBootstrap } from "./cognitive-bootstrap.js";
@@ -421,6 +422,8 @@ export default definePluginEntry({
       api.on("before_tool_call", createBeforeToolCallHandler(globalState));
       api.on("after_tool_call", createAfterToolCallHandler(globalState));
       api.on("llm_output", createLlmOutputHandler(globalState));
+      api.on("subagent_spawned", createSubagentSpawnedHandler(globalState));
+      api.on("subagent_ended", createSubagentEndedHandler(globalState));
     }
 
     // ── Session lifecycle (also register once) ─────────────────────────
