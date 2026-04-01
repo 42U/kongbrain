@@ -152,7 +152,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
     const contextWindow = params.tokenBudget ?? 200000;
 
-    const { messages, stats } = await graphTransformContext({
+    const { messages, stats, systemPromptSection } = await graphTransformContext({
       messages: params.messages,
       session,
       store,
@@ -167,6 +167,16 @@ export class KongBrainContextEngine implements ContextEngine {
 
     // Build system prompt additions
     const additions: string[] = [];
+
+    // Static content for API prefix caching (claw-code: prompt.rs static/dynamic split)
+    if (systemPromptSection) additions.push(systemPromptSection);
+
+    // Compaction summary (claw-code: compact.rs structured signals — inject once after compaction)
+    const compactionSummary = (session as any)._compactionSummary as string | undefined;
+    if (compactionSummary) {
+      additions.push("[POST-COMPACTION CONTEXT]\n" + compactionSummary);
+      delete (session as any)._compactionSummary;
+    }
 
     // Wakeup briefing (synthesized at session start, may still be in-flight)
     const wakeupPromise = (session as any)._wakeupPromise as Promise<string | null> | undefined;
@@ -324,17 +334,69 @@ export class KongBrainContextEngine implements ContextEngine {
     force?: boolean;
   }): Promise<CompactResult> {
     // Graph retrieval IS the compaction — ownsCompaction: true.
-    // But we must clear injectedSections so static content re-injects
-    // after messages are dropped from the conversation window.
+    // But we extract structured signals so the model doesn't lose context
+    // about pending work and key files after old messages are dropped.
+    // (claw-code pattern: compact.rs extracts pending work, key files, continuation directive)
     const sessionKey = params.sessionKey ?? params.sessionId;
     const session = this.state.getSession(sessionKey);
     if (session) {
       session.injectedSections.clear();
     }
+
+    // Extract structured compaction signals from stored turns
+    let summary: string | undefined;
+    try {
+      const { store } = this.state;
+      if (store.isAvailable()) {
+        const turns = await store.getSessionTurnsRich(params.sessionId, 30);
+        if (turns.length > 0) {
+          const fullText = turns.map(t => t.text).join("\n");
+
+          // Pending work detection (claw-code: compact.rs:235-254)
+          const pendingRe = /\b(todo|next|pending|follow up|remaining|unfinished|still need)\b[^.\n]{0,100}/gi;
+          const pendingMatches = [...fullText.matchAll(pendingRe)]
+            .map(m => m[0].trim().slice(0, 160))
+            .slice(0, 5);
+
+          // Key file extraction (claw-code: compact.rs:256-269)
+          const filePaths = [...new Set(
+            (fullText.match(/[\w\-/.]+\.\w{1,5}/g) ?? [])
+              .filter(p => /\.(ts|js|py|rs|go|md|json|yaml|toml|tsx|jsx)$/.test(p))
+          )].slice(0, 10);
+
+          // Tool names used (claw-code: compact.rs:127-137)
+          const toolNames = [...new Set(
+            turns.filter(t => t.tool_name).map(t => t.tool_name!)
+          )];
+
+          // Current work inference (claw-code: compact.rs:272-279)
+          const lastText = turns.filter(t => t.text.length > 10).at(-1)?.text.slice(0, 200) ?? "";
+
+          const parts: string[] = [];
+          if (pendingMatches.length > 0) parts.push(`PENDING: ${pendingMatches.join("; ")}`);
+          if (filePaths.length > 0) parts.push(`FILES: ${filePaths.join(", ")}`);
+          if (toolNames.length > 0) parts.push(`TOOLS USED: ${toolNames.join(", ")}`);
+          if (lastText) parts.push(`LAST: ${lastText}`);
+          parts.push("Resume directly — do not recap what was happening.");
+
+          if (parts.length > 1) {
+            summary = parts.join("\n");
+            // Stash for next assemble() to inject
+            if (session) {
+              (session as any)._compactionSummary = summary;
+            }
+          }
+        }
+      }
+    } catch { /* non-critical */ }
+
     return {
       ok: true,
-      compacted: false,
-      reason: "Graph retrieval handles context selection; no LLM-based compaction needed.",
+      compacted: !!summary,
+      reason: summary
+        ? "Extracted structured signals for continuation."
+        : "Graph retrieval handles context selection; no LLM-based compaction needed.",
+      result: summary ? { summary, tokensBefore: 0 } : undefined,
     };
   }
 

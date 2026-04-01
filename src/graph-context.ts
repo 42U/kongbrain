@@ -505,6 +505,40 @@ function formatTierSection(entries: CoreMemoryEntry[], label: string): string {
   return `${label}:\n${lines.join("\n")}`;
 }
 
+/**
+ * Build static system prompt section for API prefix caching.
+ * Content here goes into systemPromptAddition where it benefits from
+ * cache-read rates (10% cost) on subsequent API calls in the agentic loop.
+ * (claw-code pattern: __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__ — prompt.rs:37-140)
+ */
+function buildSystemPromptSection(session: SessionState, tier0Entries: CoreMemoryEntry[]): string | undefined {
+  const parts: string[] = [];
+
+  // IKONG architecture description (static, ~120 tokens)
+  const pillarLines: string[] = [];
+  if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
+  if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
+  if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
+  if (pillarLines.length > 0) {
+    parts.push(
+      "GRAPH PILLARS (your structural context):\n" +
+      `  ${pillarLines.join(" | ")}\n` +
+      "  IKONG cognitive architecture:\n" +
+      "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
+      "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
+      "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
+      "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
+      "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
+    );
+  }
+
+  // Tier 0 core directives (semi-static, changes rarely)
+  const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
+  if (t0Section) parts.push(t0Section);
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
 // ── Guaranteed recent turns from previous sessions ─────────────────────────────
 
 async function ensureRecentTurns(
@@ -813,6 +847,8 @@ export interface GraphTransformParams {
 export interface GraphTransformResult {
   messages: AgentMessage[];
   stats: ContextStats;
+  /** Static content for the system prompt — benefits from API prefix caching (10% cost). */
+  systemPromptSection?: string;
 }
 
 /**
@@ -826,6 +862,17 @@ export async function graphTransformContext(
   const contextWindow = params.contextWindow ?? 200000;
   const budgets = calcBudgets(contextWindow);
 
+  // Build static system prompt section for API prefix caching.
+  // Done here (wrapper) so it attaches to any inner return path.
+  // (claw-code pattern: static sections above __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__)
+  let systemPromptSection: string | undefined;
+  try {
+    const tier0ForSys = store.isAvailable()
+      ? applyCoreBudget(await store.getAllCoreMemory(0), getTier0BudgetChars(budgets))
+      : [];
+    systemPromptSection = buildSystemPromptSection(session, tier0ForSys);
+  } catch { /* non-critical — tier0 will still appear in user message */ }
+
   // Never throw — return raw messages on any failure
   try {
     const TRANSFORM_TIMEOUT_MS = 10_000;
@@ -835,6 +882,7 @@ export async function graphTransformContext(
         setTimeout(() => reject(new Error("graphTransformContext timed out")), TRANSFORM_TIMEOUT_MS),
       ),
     ]);
+    result.systemPromptSection = systemPromptSection;
     return result;
   } catch (err) {
     console.error("graphTransformContext fatal error, returning raw messages:", err);
@@ -851,6 +899,7 @@ export async function graphTransformContext(
         mode: "passthrough",
         prefetchHit: false,
       },
+      systemPromptSection,
     };
   }
 }
@@ -876,6 +925,12 @@ async function graphTransformInner(
       reductionPct: fullHistoryTokens > 0 ? (Math.max(0, fullHistoryTokens - sentTokens) / fullHistoryTokens) * 100 : 0,
       graphNodes, neighborNodes, recentTurns: recentTurnCount, mode, prefetchHit,
     };
+  }
+
+  function makeResult(
+    msgs: AgentMessage[], stats: ContextStats, sysSection?: string,
+  ): GraphTransformResult {
+    return { messages: msgs, stats, systemPromptSection: sysSection };
   }
 
   // Derive retrieval config from session's current adaptive config
