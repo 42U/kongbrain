@@ -73,6 +73,8 @@ export function createCoreMemoryToolDef(state: GlobalPluginState, session: Sessi
                 details: { error: true },
               };
             }
+            // Invalidate cached section so updated content re-injects next turn
+            session.injectedSections.delete(tier === 0 ? "tier0" : "tier1");
             return {
               content: [{ type: "text" as const, text: `Created core memory: ${id} (tier ${tier}, ${params.category ?? "general"}, p${params.priority ?? 50})` }],
               details: { id },
@@ -95,6 +97,9 @@ export function createCoreMemoryToolDef(state: GlobalPluginState, session: Sessi
                 details: { error: true },
               };
             }
+            // Invalidate both tiers — update may have changed the tier
+            session.injectedSections.delete("tier0");
+            session.injectedSections.delete("tier1");
             return {
               content: [{ type: "text" as const, text: `Updated core memory: ${params.id}` }],
               details: { id: params.id },
@@ -106,6 +111,9 @@ export function createCoreMemoryToolDef(state: GlobalPluginState, session: Sessi
               return { content: [{ type: "text" as const, text: "Error: 'id' is required for deactivate action." }], details: null };
             }
             await store.deleteCoreMemory(params.id);
+            // Invalidate both tiers so removal is reflected next turn
+            session.injectedSections.delete("tier0");
+            session.injectedSections.delete("tier1");
             return {
               content: [{ type: "text" as const, text: `Deactivated core memory: ${params.id}` }],
               details: { id: params.id },
