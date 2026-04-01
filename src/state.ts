@@ -62,6 +62,9 @@ export class SessionState {
   cumulativeTokens = 0;
   lastCleanupTokens = 0;
   midSessionCleanupThreshold = 25_000;
+  /** Last cumulative usage total seen from OpenClaw — used to compute per-call deltas
+   *  since getUsageTotals() returns running totals, not per-response values. */
+  lastSeenUsageTotal = 0;
 
   // Cleanup tracking
   cleanedUp = false;

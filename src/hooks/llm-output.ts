@@ -33,13 +33,33 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
     // Measure assistant text output (used for token estimation and planning gate)
     const textLen = event.assistantTexts.reduce((s, t) => s + t.length, 0);
 
-    // Extract token counts — fall back to text-length estimate when provider
-    // doesn't report usage (OpenClaw often passes 0 or undefined)
-    let inputTokens = event.usage?.input ?? 0;
-    let outputTokens = event.usage?.output ?? 0;
-    if (inputTokens + outputTokens === 0 && textLen > 0) {
-      outputTokens = Math.ceil(textLen / 4); // ~4 chars per token
+    // Extract token counts — OpenClaw's getUsageTotals() returns CUMULATIVE totals
+    // across all API calls in the session, not per-response values.
+    // Compute the delta since last call to avoid quadratic overcounting.
+    const reportedInput = event.usage?.input ?? 0;
+    const reportedOutput = event.usage?.output ?? 0;
+    const reportedCacheRead = event.usage?.cacheRead ?? 0;
+    const reportedCacheWrite = event.usage?.cacheWrite ?? 0;
+    const reportedTotal = reportedInput + reportedOutput + reportedCacheRead + reportedCacheWrite;
+
+    let deltaTokens: number;
+    if (reportedTotal > 0) {
+      deltaTokens = Math.max(0, reportedTotal - session.lastSeenUsageTotal);
+      session.lastSeenUsageTotal = reportedTotal;
+    } else if (textLen > 0) {
+      // No usage data — fall back to text-length estimate
+      deltaTokens = Math.ceil(textLen / 4); // ~4 chars per token
+    } else {
+      deltaTokens = 0;
     }
+
+    // DB stats: approximate input/output split from the delta
+    const inputTokens = reportedTotal > 0 && deltaTokens > 0
+      ? Math.round(deltaTokens * (reportedInput / reportedTotal))
+      : 0;
+    const outputTokens = reportedTotal > 0 && deltaTokens > 0
+      ? Math.round(deltaTokens * (reportedOutput / reportedTotal))
+      : (deltaTokens > 0 ? deltaTokens : Math.ceil(textLen / 4));
 
     // Always update session stats — turn_count must increment even without usage data
     if (session.surrealSessionId) {
@@ -55,8 +75,8 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
     }
 
     // Accumulate for daemon batching and mid-session cleanup
-    session.newContentTokens += inputTokens + outputTokens;
-    session.cumulativeTokens += inputTokens + outputTokens;
+    session.newContentTokens += deltaTokens;
+    session.cumulativeTokens += deltaTokens;
 
     // Track accumulated text output for planning gate
     session.turnTextLength += textLen;
