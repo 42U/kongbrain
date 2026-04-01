@@ -51,18 +51,14 @@ async function runDeferredCleanupInner(
   const orphaned = await store.getOrphanedSessions(10).catch(() => []);
   if (orphaned.length === 0) return 0;
 
-  // Immediately claim all orphaned sessions so no concurrent run can pick them up
-  await Promise.all(
-    orphaned.map(s =>
-      store.markSessionEnded(s.id).catch(e => swallow("deferred:claim", e))
-    )
-  );
-
   let processed = 0;
 
   const cleanup = async () => {
     for (const session of orphaned) {
       try {
+        // Claim each session just before processing so unclaimed ones remain
+        // available to the next run if we time out partway through
+        await store.markSessionEnded(session.id).catch(e => swallow("deferred:claim", e));
         await processOrphanedSession(session.id, store, embeddings, complete);
         processed++;
       } catch (e) {

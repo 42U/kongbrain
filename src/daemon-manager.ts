@@ -117,12 +117,17 @@ export function startMemoryDaemon(
             try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
           }
         }
-        if (Object.keys(result).length === 0) return;
+        const PRIMARY_FIELDS = ["causal", "monologue", "artifacts"];
+        if (!PRIMARY_FIELDS.some(f => f in result)) return;
       }
     }
 
-    const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState, taskId, projectId, turns);
-    extractedTurnCount = turns.length;
+    try {
+      const counts = await writeExtractionResults(result, sessionId, store, embeddings, priorState, taskId, projectId, turns);
+      extractedTurnCount = turns.length;
+    } catch (e) {
+      swallow.warn("daemon:writeExtractionResults", e);
+    }
   }
 
   // Pending batch (only keep latest — newer batch supersedes older)
@@ -158,6 +163,9 @@ export function startMemoryDaemon(
   return {
     sendTurnBatch(turns, thinking, retrievedMemories, priorExtractions) {
       if (shuttingDown) return;
+      if (pendingBatch) {
+        swallow.warn("daemon:batchOverwrite", new Error(`Overwriting pending batch (${pendingBatch.turns.length} turns) with new batch (${turns.length} turns)`));
+      }
       pendingBatch = { turns, thinking, retrievedMemories, priorExtractions };
       // Fire-and-forget
       processPending().catch(e => swallow.warn("daemon:sendBatch", e));
@@ -176,14 +184,12 @@ export function startMemoryDaemon(
       shuttingDown = true;
       // Wait for current extraction to finish
       if (processing) {
-        await Promise.race([
-          new Promise<void>(resolve => {
-            const check = setInterval(() => {
-              if (!processing) { clearInterval(check); resolve(); }
-            }, 100);
-          }),
-          new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
-        ]);
+        await new Promise<void>(resolve => {
+          const check = setInterval(() => {
+            if (!processing) { clearInterval(check); clearTimeout(timeout); resolve(); }
+          }, 100);
+          const timeout = setTimeout(() => { clearInterval(check); resolve(); }, timeoutMs);
+        });
       }
       // Shared store/embeddings — don't dispose (owned by global state)
     },

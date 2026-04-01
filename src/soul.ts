@@ -191,7 +191,7 @@ export async function getQualitySignals(store: SurrealStore): Promise<QualitySig
     const totalSuccess = Number(skillRow?.totalSuccess ?? 0);
     const totalFailure = Number(skillRow?.totalFailure ?? 0);
     const skillTotal = totalSuccess + totalFailure;
-    const skillSuccessRate = skillTotal > 0 ? totalSuccess / skillTotal : 0;
+    const skillSuccessRate = skillTotal > 0 && Number.isFinite(skillTotal) ? totalSuccess / skillTotal : 0;
 
     const critCount = Number(critRow?.count ?? 0);
     const reflCount = Number(totalRow?.count ?? 0);

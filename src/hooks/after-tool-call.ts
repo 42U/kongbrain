@@ -54,7 +54,7 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
             });
             if (assistantTurnId) session.lastAssistantTurnId = assistantTurnId;
           } catch (e) {
-            swallow("hook:afterToolCall:eagerAssistantTurn", e);
+            swallow.warn("hook:afterToolCall:eagerAssistantTurn", e);
           }
         }
         if (session.lastAssistantTurnId) {
@@ -63,12 +63,12 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
         }
       }
     } catch (e) {
-      swallow("hook:afterToolCall:store", e);
+      swallow.warn("hook:afterToolCall:store", e);
     }
 
     // Auto-track file artifacts from write/edit tools
     if (!isError) {
-      trackArtifact(event.toolName, event.params, session.taskId, session.projectId, state)
+      await trackArtifact(event.toolName, event.params, session.taskId, session.projectId, state)
         .catch(e => swallow.warn("hook:afterToolCall:artifact", e));
     }
 

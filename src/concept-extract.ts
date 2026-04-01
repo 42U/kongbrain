@@ -57,7 +57,7 @@ export async function upsertAndLinkConcepts(
       if (embeddings.isAvailable()) {
         try { embedding = await embeddings.embed(name); } catch { /* ok */ }
       }
-      const conceptId = await store.upsertConcept(name, embedding);
+      const conceptId = await store.upsertConcept(name, embedding, logTag);
       if (conceptId) {
         await store.relate(sourceId, edgeName, conceptId)
           .catch(e => swallow(`${logTag}:relate`, e));

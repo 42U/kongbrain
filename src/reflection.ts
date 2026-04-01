@@ -207,6 +207,7 @@ export async function generateReflection(
       { record },
     );
     const reflectionId = String(rows[0]?.id ?? "");
+    store.clearReflectionCache();
 
     if (reflectionId && surrealSessionId) {
       await store.relate(reflectionId, "reflects_on", surrealSessionId).catch(e => swallow.warn("reflection:relate", e));

@@ -63,7 +63,7 @@ export function createRecallToolDef(state: GlobalPluginState, session: SessionSt
 
         const topIds = results
           .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-          .slice(0, 5)
+          .slice(0, Math.min(maxResults, 8))
           .map((r) => r.id);
 
         let neighbors: VectorSearchResult[] = [];

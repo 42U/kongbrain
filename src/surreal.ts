@@ -1408,6 +1408,10 @@ export class SurrealStore {
 
   private _reflectionSessions: Set<string> | null = null;
 
+  clearReflectionCache(): void {
+    this._reflectionSessions = null;
+  }
+
   async getReflectionSessionIds(): Promise<Set<string>> {
     if (this._reflectionSessions) return this._reflectionSessions;
     try {

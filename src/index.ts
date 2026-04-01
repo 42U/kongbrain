@@ -147,11 +147,18 @@ async function runSessionCleanup(
     new Promise(resolve => setTimeout(resolve, 150_000)),
   ]);
 
+  // Await the graduation promise once and reuse the result below
+  let gradResult: Awaited<typeof graduationPromise> = null;
+  try {
+    gradResult = await graduationPromise;
+  } catch (e) {
+    swallow.warn("cleanup:graduationAwait", e);
+  }
+
   // If soul graduation just happened, persist a graduation event so the next
   // session can celebrate with the user. We also fire a system event for
   // immediate visibility if the session is still active.
   try {
-    const gradResult = await graduationPromise;
     if (gradResult?.graduated && gradResult.soul) {
       // Check if this is a NEW graduation (not a pre-existing soul)
       const isNewGraduation = gradResult.report.stage === "ready";
@@ -189,7 +196,6 @@ async function runSessionCleanup(
   // Soul evolution — if soul already exists, check if it should be revised
   // based on new experience (runs every 10 sessions after last revision)
   try {
-    const gradResult = await graduationPromise;
     if (gradResult?.graduated && gradResult.report.stage !== "ready") {
       // Pre-existing soul — check for evolution
       await evolveSoul(s, complete);

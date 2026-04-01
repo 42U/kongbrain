@@ -186,14 +186,14 @@ Return ONLY valid JSON.`,
         assertRecordId(g.id);
         // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE ${g.id} SET importance = math::max([3, importance - 2])`,
+          `UPDATE ${g.id} SET importance = math::max([3, (importance ?? 5) - 2])`,
         ).catch(e => swallow.warn("cognitive-check:correctionDecay", e));
       } else {
         // Correction was relevant but agent ignored it — reinforce (cap 9)
         assertRecordId(g.id);
         // Direct interpolation safe: assertRecordId validates format above
         await store.queryExec(
-          `UPDATE ${g.id} SET importance = math::min([9, importance + 1])`,
+          `UPDATE ${g.id} SET importance = math::min([9, (importance ?? 5) + 1])`,
         ).catch(e => swallow.warn("cognitive-check:correctionReinforce", e));
       }
     }

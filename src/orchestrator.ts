@@ -192,7 +192,7 @@ export async function preflight(
 
   // Non-first-turn short inputs → continuation
   if (orch.turnIndex > 1 && input.length < 20 && !input.includes("?")) {
-    const inheritedLimit = Math.max(orch.lastConfig.toolLimit, 25);
+    const inheritedLimit = Math.min(orch.lastConfig.toolLimit, 25);
     const config: AdaptiveConfig = {
       ...orch.lastConfig, toolLimit: inheritedLimit, skipRetrieval: true,
       vectorSearchLimits: { turn: 0, identity: 0, concept: 0, memory: 0, artifact: 0 },

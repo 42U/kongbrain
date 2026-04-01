@@ -6,7 +6,7 @@
  * so the next session's wakeup has context even before deferred
  * extraction runs.
  */
-import { readFileSync, writeFileSync, unlinkSync, existsSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
 const HANDOFF_FILENAME = ".kongbrain-handoff.json";
@@ -42,14 +42,21 @@ export function readAndDeleteHandoffFile(
   workspaceDir: string,
 ): HandoffFileData | null {
   const path = join(workspaceDir, HANDOFF_FILENAME);
+  const processingPath = path + ".processing";
+  // Also clean up stale .processing files from prior crashes
+  if (existsSync(processingPath) && !existsSync(path)) {
+    try { unlinkSync(processingPath); } catch { /* ignore */ }
+  }
   if (!existsSync(path)) return null;
   try {
-    const raw = readFileSync(path, "utf-8");
-    unlinkSync(path);
+    // Atomic rename first so a crash between read and delete can't re-process
+    renameSync(path, processingPath);
+    const raw = readFileSync(processingPath, "utf-8");
+    unlinkSync(processingPath);
     const parsed = JSON.parse(raw);
     // Runtime validation — reject prototype pollution and malformed data
     if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    if ("__proto__" in parsed || "constructor" in parsed) return null;
+    if (Object.hasOwn(parsed, "__proto__") || Object.hasOwn(parsed, "constructor")) return null;
     const data: HandoffFileData = {
       sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId.slice(0, 200) : "",
       timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp.slice(0, 50) : "",
@@ -61,7 +68,7 @@ export function readAndDeleteHandoffFile(
     return data;
   } catch {
     // Corrupted or deleted between check and read
-    try { unlinkSync(path); } catch { /* ignore */ }
+    try { unlinkSync(processingPath); } catch { /* ignore */ }
     return null;
   }
 }

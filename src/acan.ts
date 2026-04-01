@@ -273,15 +273,18 @@ function trainInBackground(
     workerData: { samples, cfg, warmStart: warmStart ?? null, EMBED_DIM, ATTN_DIM, FEATURE_COUNT },
   });
 
+  worker.unref();
+
   worker.on("message", (msg: any) => {
     try {
       saveWeights(msg.weights, weightsPath);
       _weights = msg.weights;
       _active = true;
     } catch { /* non-fatal */ }
+    worker.terminate();
   });
 
-  worker.on("error", () => { /* training failure is non-fatal */ });
+  worker.on("error", () => { worker.terminate(); });
 }
 
 // ── Startup: auto-train and activate ──
