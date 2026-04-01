@@ -473,13 +473,19 @@ function getTier1BudgetChars(budgets: Budgets): number {
   return Math.round(budgets.core * 0.45 * CHARS_PER_TOKEN);
 }
 
+const MAX_CORE_MEMORY_CHARS = 800; // Per-item cap (claw-code: MAX_INSTRUCTION_FILE_CHARS)
+
 function applyCoreBudget(entries: CoreMemoryEntry[], budgetChars: number): CoreMemoryEntry[] {
   let used = 0;
   const result: CoreMemoryEntry[] = [];
   for (const e of entries) {
-    const len = e.text.length + 6;
+    // Cap individual entries so one large directive doesn't starve others
+    const text = e.text.length > MAX_CORE_MEMORY_CHARS
+      ? e.text.slice(0, MAX_CORE_MEMORY_CHARS) + "..."
+      : e.text;
+    const len = text.length + 6;
     if (used + len > budgetChars) continue;
-    result.push(e);
+    result.push(text !== e.text ? { ...e, text } : e);
     used += len;
   }
   return result;

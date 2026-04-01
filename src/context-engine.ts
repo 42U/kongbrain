@@ -323,7 +323,14 @@ export class KongBrainContextEngine implements ContextEngine {
     tokenBudget?: number;
     force?: boolean;
   }): Promise<CompactResult> {
-    // Graph retrieval IS the compaction — ownsCompaction: true
+    // Graph retrieval IS the compaction — ownsCompaction: true.
+    // But we must clear injectedSections so static content re-injects
+    // after messages are dropped from the conversation window.
+    const sessionKey = params.sessionKey ?? params.sessionId;
+    const session = this.state.getSession(sessionKey);
+    if (session) {
+      session.injectedSections.clear();
+    }
     return {
       ok: true,
       compacted: false,
