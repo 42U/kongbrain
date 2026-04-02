@@ -10,7 +10,7 @@ import type { GlobalPluginState } from "../state.js";
 import { recordToolCall } from "../orchestrator.js";
 import { cosineSimilarity } from "../graph-context.js";
 
-const DEFAULT_TOOL_LIMIT = 10;
+const DEFAULT_TOOL_LIMIT = 9;
 const CLASSIFICATION_LIMITS: Record<string, number> = { LOOKUP: 3, EDIT: 4, REFACTOR: 8 };
 const API_CYCLE_CAP = 16;
 const RECALL_SIMILARITY_THRESHOLD = 0.80;
@@ -97,7 +97,9 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
       }
     }
 
-    // Planning gate: model must output text before first tool call
+    // Planning gate: model must output text before first tool call.
+    // If the assistant already emitted text containing a classification keyword
+    // (LOOKUP/EDIT/REFACTOR), the gate passes — inline classification counts.
     if (textLengthSoFar === 0 && toolIndex === 0) {
       const retrievalNote = session.lastRetrievalSummary
         ? `\nContext already injected: ${session.lastRetrievalSummary}. Read <graph_context> before calling tools.`
@@ -114,6 +116,15 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
           "If injected context already answers the question, you may need ZERO tool calls.\n" +
           "Speak your plan, then proceed.",
       };
+    }
+
+    // Inline classification: if text was emitted with a classification keyword,
+    // parse and apply the tool limit (even on first tool call after text)
+    if (toolIndex === 0 && textLengthSoFar > 0 && session.toolLimit === DEFAULT_TOOL_LIMIT) {
+      const parsed = parseClassificationFromText(session.lastAssistantText ?? "");
+      if (parsed !== null) {
+        session.toolLimit = parsed;
+      }
     }
 
     return undefined;
