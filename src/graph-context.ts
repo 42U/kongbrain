@@ -426,23 +426,30 @@ async function scoreResults(
 // ── Deduplication ──────────────────────────────────────────────────────────────
 
 function deduplicateResults(ranked: ScoredResult[]): ScoredResult[] {
+  // Pre-compute word sets to avoid re-splitting in O(n^2) inner loop
+  const wordSets = ranked.map(r =>
+    new Set((r.text ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 2)),
+  );
   const kept: ScoredResult[] = [];
-  for (const item of ranked) {
+  const keptIndexes: number[] = [];
+  for (let i = 0; i < ranked.length; i++) {
+    const item = ranked[i];
     let isDup = false;
-    for (const existing of kept) {
+    for (const ki of keptIndexes) {
+      const existing = ranked[ki];
       if (item.embedding?.length && existing.embedding?.length
           && item.embedding.length === existing.embedding.length) {
         if (cosineSimilarity(item.embedding, existing.embedding) > 0.88) { isDup = true; break; }
         continue;
       }
-      const words = new Set((item.text ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 2));
-      const eWords = new Set((existing.text ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+      const words = wordSets[i];
+      const eWords = wordSets[ki];
       let intersection = 0;
       for (const w of words) { if (eWords.has(w)) intersection++; }
       const union = words.size + eWords.size - intersection;
       if (union > 0 && intersection / union > 0.80) { isDup = true; break; }
     }
-    if (!isDup) kept.push(item);
+    if (!isDup) { kept.push(item); keptIndexes.push(i); }
   }
   return kept;
 }
@@ -1061,28 +1068,21 @@ async function graphTransformInner(
     const DEEP_INTENTS = new Set(["code-debug", "deep-explore", "multi-step", "reference-prior"]);
     const graphHops = DEEP_INTENTS.has(currentIntent) ? 2 : 1;
 
+    // Graph expand + causal traversal run in parallel (both depend only on topIds)
     let neighborIds = new Set<string>();
     let neighborResults: VectorSearchResult[] = [];
-    if (topIds.length > 0) {
-      try {
-        neighborResults = await store.graphExpand(topIds, queryVec, graphHops);
-        neighborIds = new Set(neighborResults.map((n) => n.id));
-        const existingIds = new Set(results.map((r) => r.id));
-        neighborResults = neighborResults.filter((n) => !existingIds.has(n.id));
-      } catch (e) {
-        swallow.error("graph-context:graphExpand", e);
-      }
-    }
-
-    // Causal chain traversal
     let causalResults: VectorSearchResult[] = [];
-    if (topIds.length > 0 && queryVec) {
-      try {
-        const causal = await queryCausalContext(topIds, queryVec, 2, 0.4, store);
-        const existingIds = new Set([...results.map((r) => r.id), ...neighborResults.map((r) => r.id)]);
-        causalResults = causal.filter((c) => !existingIds.has(c.id));
-        for (const c of causalResults) { neighborIds.add(c.id); }
-      } catch (e) { swallow("graph-context:causal", e); }
+    if (topIds.length > 0) {
+      const existingIds = new Set(results.map((r) => r.id));
+      const [expandResult, causalResult] = await Promise.all([
+        store.graphExpand(topIds, queryVec, graphHops).catch(e => { swallow.error("graph-context:graphExpand", e); return [] as VectorSearchResult[]; }),
+        queryVec ? queryCausalContext(topIds, queryVec, 2, 0.4, store).catch(e => { swallow("graph-context:causal", e); return [] as VectorSearchResult[]; }) : Promise.resolve([] as VectorSearchResult[]),
+      ]);
+      neighborResults = expandResult.filter((n) => !existingIds.has(n.id));
+      neighborIds = new Set(neighborResults.map((n) => n.id));
+      const allExisting = new Set([...existingIds, ...neighborResults.map((r) => r.id)]);
+      causalResults = causalResult.filter((c) => !allExisting.has(c.id));
+      for (const c of causalResults) { neighborIds.add(c.id); }
     }
 
     // Combine, filter, score

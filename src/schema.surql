@@ -42,6 +42,7 @@ DEFINE FIELD IF NOT EXISTS embedding ON artifact TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS tags ON artifact TYPE option<array>;
 DEFINE FIELD IF NOT EXISTS created_at ON artifact TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS artifact_vec_idx ON artifact FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS artifact_type_idx ON artifact FIELDS type;
 
 -- ============================================================
 -- PILLAR 5: Concept (semantic knowledge nodes)
@@ -78,6 +79,7 @@ DEFINE FIELD IF NOT EXISTS model ON turn TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS usage ON turn TYPE option<object>;
 DEFINE INDEX IF NOT EXISTS turn_vec_idx ON turn FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS turn_session_idx ON turn FIELDS session_id;
+DEFINE INDEX IF NOT EXISTS turn_tool_name_idx ON turn FIELDS tool_name;
 
 -- Identity chunks (agent persona / identity)
 DEFINE TABLE IF NOT EXISTS identity_chunk SCHEMALESS;
@@ -115,6 +117,7 @@ DEFINE FIELD IF NOT EXISTS status ON memory TYPE option<string> DEFAULT "active"
 DEFINE FIELD IF NOT EXISTS resolved_at ON memory TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS resolved_by ON memory TYPE option<string>;
 DEFINE INDEX IF NOT EXISTS memory_vec_idx ON memory FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS memory_category_idx ON memory FIELDS category;
 
 -- ============================================================
 -- GRAPH EDGES: Turn-level
@@ -260,6 +263,7 @@ DEFINE FIELD IF NOT EXISTS avg_duration_ms ON skill TYPE float DEFAULT 0.0;
 DEFINE FIELD IF NOT EXISTS last_used ON skill TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS created_at ON skill TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS skill_vec_idx ON skill FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS skill_active_idx ON skill FIELDS active;
 
 DEFINE TABLE IF NOT EXISTS skill_from_task TYPE RELATION IN skill OUT task;
 DEFINE TABLE IF NOT EXISTS skill_uses_concept TYPE RELATION IN skill OUT concept;

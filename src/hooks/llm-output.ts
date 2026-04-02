@@ -61,16 +61,24 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
       ? Math.round(deltaTokens * (reportedOutput / reportedTotal))
       : (deltaTokens > 0 ? deltaTokens : Math.ceil(textLen / 4));
 
-    // Always update session stats — turn_count must increment even without usage data
+    // Batch session stats writes — accumulate in-memory, flush every 5th response
     if (session.surrealSessionId) {
-      try {
-        await state.store.updateSessionStats(
-          session.surrealSessionId,
-          inputTokens,
-          outputTokens,
-        );
-      } catch (e) {
-        swallow("hook:llmOutput:sessionStats", e);
+      session._pendingInputTokens = (session._pendingInputTokens ?? 0) + inputTokens;
+      session._pendingOutputTokens = (session._pendingOutputTokens ?? 0) + outputTokens;
+      session._statsFlushCounter = (session._statsFlushCounter ?? 0) + 1;
+      if (session._statsFlushCounter >= 5) {
+        try {
+          await state.store.updateSessionStats(
+            session.surrealSessionId,
+            session._pendingInputTokens,
+            session._pendingOutputTokens,
+          );
+        } catch (e) {
+          swallow("hook:llmOutput:sessionStats", e);
+        }
+        session._pendingInputTokens = 0;
+        session._pendingOutputTokens = 0;
+        session._statsFlushCounter = 0;
       }
     }
 

@@ -115,7 +115,7 @@ export async function prefetchContext(
 
   evictStale();
 
-  for (const query of queries) {
+  await Promise.all(queries.map(async (query) => {
     try {
       const queryVec = await embeddings.embed(query);
 
@@ -152,7 +152,7 @@ export async function prefetchContext(
     } catch (e) {
       swallow("prefetch:query", e);
     }
-  }
+  }));
 }
 
 // --- Cache Lookup ---

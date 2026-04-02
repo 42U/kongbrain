@@ -141,6 +141,8 @@ interface OrchestratorSessionState {
   turnIndex: number;
   currentTurnTools: { name: string; args?: string }[];
   steeringCandidates: SteeringCandidate[];
+  cachedUtilAvg: number | null;
+  utilAvgTurn: number;
 }
 
 const sessionOrchState = new WeakMap<SessionState, OrchestratorSessionState>();
@@ -153,6 +155,8 @@ function getOrchState(session: SessionState): OrchestratorSessionState {
       turnIndex: 0,
       currentTurnTools: [],
       steeringCandidates: [],
+      cachedUtilAvg: null,
+      utilAvgTurn: 0,
     };
     sessionOrchState.set(session, state);
   }
@@ -252,11 +256,14 @@ export async function preflight(
     config.toolLimit = Math.min(complexity.estimatedToolCalls, Math.ceil(config.toolLimit * 1.5), 20);
   }
 
-  // Adaptive token budget from rolling retrieval quality
+  // Adaptive token budget from rolling retrieval quality (cached, refreshed every 10 turns)
   if (!config.skipRetrieval) {
-    const recentUtil = await getRecentUtilizationAvg(session.sessionId, 10).catch(() => null);
-    if (recentUtil !== null) {
-      const scale = Math.max(0.5, Math.min(1.3, 0.5 + recentUtil * 0.8));
+    if (orch.cachedUtilAvg === null || orch.turnIndex - orch.utilAvgTurn >= 10) {
+      orch.cachedUtilAvg = await getRecentUtilizationAvg(session.sessionId, 10).catch(() => null);
+      orch.utilAvgTurn = orch.turnIndex;
+    }
+    if (orch.cachedUtilAvg !== null) {
+      const scale = Math.max(0.5, Math.min(1.3, 0.5 + orch.cachedUtilAvg * 0.8));
       config.tokenBudget = Math.round(config.tokenBudget * scale);
     }
   }

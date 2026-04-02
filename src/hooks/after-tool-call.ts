@@ -68,7 +68,8 @@ export function createAfterToolCallHandler(state: GlobalPluginState) {
 
     // Auto-track file artifacts from write/edit tools
     if (!isError) {
-      await trackArtifact(event.toolName, event.params, session.taskId, session.projectId, state)
+      // Fire-and-forget: artifact tracking is best-effort enrichment, not critical path
+      trackArtifact(event.toolName, event.params, session.taskId, session.projectId, state)
         .catch(e => swallow.warn("hook:afterToolCall:artifact", e));
     }
 

@@ -61,11 +61,7 @@ export class EmbeddingService {
 
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const results: number[][] = [];
-    for (const text of texts) {
-      results.push(await this.embed(text));
-    }
-    return results;
+    return Promise.all(texts.map(text => this.embed(text)));
   }
 
   isAvailable(): boolean {

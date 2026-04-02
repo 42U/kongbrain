@@ -28,10 +28,12 @@ function mockStore() {
 }
 
 function mockEmbeddings(available = true) {
-  return {
+  const svc = {
     isAvailable: () => available,
     embed: async () => new Array(1024).fill(0),
+    embedBatch: async (texts: string[]) => texts.map(() => new Array(1024).fill(0)),
   } as any;
+  return svc;
 }
 
 function mockComplete() {

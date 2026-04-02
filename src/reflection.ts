@@ -143,8 +143,15 @@ export async function generateReflection(
 ): Promise<void> {
   if (!store.isAvailable()) return;
 
+  // Gate: only reflect if session metrics warrant it
+  const metrics = await gatherSessionMetrics(sessionId, store);
+  if (metrics) {
+    const { reflect } = shouldReflect(metrics);
+    if (!reflect) return;
+  }
+
   // Get session turns directly — no dependency on orchestrator_metrics
-  const turns = await store.getSessionTurns(sessionId, 30).catch(() => []);
+  const turns = await store.getSessionTurns(sessionId, 15).catch(() => []);
   if (turns.length < 3) return; // Too short for meaningful reflection
 
   const transcript = turns

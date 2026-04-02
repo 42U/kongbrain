@@ -79,10 +79,10 @@ export function startMemoryDaemon(
     const { buildSystemPrompt, buildTranscript, writeExtractionResults } = await import("./memory-daemon.js");
 
     const transcript = buildTranscript(turns);
-    const sections: string[] = [`[TRANSCRIPT]\n${transcript.slice(0, 60000)}`];
+    const sections: string[] = [`[TRANSCRIPT]\n${transcript.slice(0, 30000)}`];
 
     if (thinking.length > 0) {
-      sections.push(`[THINKING]\n${thinking.slice(-8).join("\n---\n").slice(0, 4000)}`);
+      sections.push(`[THINKING]\n${thinking.slice(-3).join("\n---\n").slice(0, 2000)}`);
     }
 
     if (retrievedMemories.length > 0) {

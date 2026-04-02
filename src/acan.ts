@@ -196,16 +196,28 @@ async function fetchTrainingData(store: SurrealStore): Promise<TrainingSample[]>
 
   const uniqueMemIds = [...new Set(outcomes.map((r: any) => String(r.memory_id)))];
   const embeddingMap = new Map<string, number[]>();
+
+  // Group IDs by table for batched fetches instead of one query per ID
+  const byTable = new Map<string, string[]>();
   for (const mid of uniqueMemIds) {
     try {
       assertRecordId(mid);
-      // Direct interpolation safe: assertRecordId validates format above
-      const flat = await store.queryFirst<{ id: string; embedding: number[] }>(
-        `SELECT id, embedding FROM ${mid} WHERE embedding != NONE`,
-      );
-      if (flat[0]?.embedding) embeddingMap.set(mid, flat[0].embedding);
-    } catch (e) { swallow("acan:fetchEmb", e); }
+      const table = mid.split(":")[0];
+      if (!byTable.has(table)) byTable.set(table, []);
+      byTable.get(table)!.push(mid);
+    } catch { /* skip invalid */ }
   }
+  await Promise.all([...byTable.entries()].map(async ([table, ids]) => {
+    try {
+      const rows = await store.queryFirst<{ id: string; embedding: number[] }>(
+        `SELECT id, embedding FROM ${table} WHERE id IN $ids AND embedding != NONE`,
+        { ids },
+      );
+      for (const row of rows) {
+        if (row.embedding) embeddingMap.set(String(row.id), row.embedding);
+      }
+    } catch (e) { swallow("acan:fetchEmb", e); }
+  }));
 
   const samples: TrainingSample[] = [];
   for (const row of outcomes) {

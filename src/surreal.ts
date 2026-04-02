@@ -665,15 +665,15 @@ export class SurrealStore {
   }
 
   async bumpAccessCounts(ids: string[]): Promise<void> {
-    for (const id of ids) {
-      try {
-        assertRecordId(id);
-        await this.queryExec(
-          `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
-        );
-      } catch (e) {
-        swallow.warn("surreal:bumpAccessCounts", e);
-      }
+    const validated = ids.filter(id => { try { assertRecordId(id); return true; } catch { return false; } });
+    if (validated.length === 0) return;
+    try {
+      await this.queryExec(
+        `UPDATE $ids SET access_count += 1, last_accessed = time::now()`,
+        { ids: validated },
+      );
+    } catch (e) {
+      swallow.warn("surreal:bumpAccessCounts", e);
     }
   }
 
