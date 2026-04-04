@@ -34,7 +34,7 @@ All notable changes to KongBrain are documented here.
 - README: Added Performance section with batching, estimation, stripping, and structured output details.
 
 ### Tests
-- 88 → 145+ tests. New coverage for edge validation, `queryBatch`, token estimation, budget splits, content type handling.
+- 88 → 415 tests (21 test files). Full coverage: ACAN scorer, hooks, memory daemon extraction, skills, soul system, wakeup, concept extraction, session persistence, tools, subagent lifecycle, and SurrealDB integration tests against live database.
 
 ## [0.4.1] - 2026-04-02
 
