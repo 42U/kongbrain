@@ -141,6 +141,7 @@ export async function queryCausalContext(
     for (const id of frontier) {
       assertRecordId(id);
       for (const edge of causalEdges) {
+        if (!/^[a-z_]+$/.test(edge)) continue; // safety check
         stmts.push(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`);
         stmts.push(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`);
       }

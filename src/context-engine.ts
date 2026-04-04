@@ -51,6 +51,7 @@ import { graduateCausalToSkills } from "./skills.js";
 import { attemptGraduation, evolveSoul, checkStageTransition } from "./soul.js";
 import { swallow } from "./errors.js";
 
+/** OpenClaw ContextEngine backed by SurrealDB graph retrieval and BGE-M3 embeddings. */
 export class KongBrainContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
     id: "kongbrain",
@@ -63,6 +64,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
   // ── Bootstrap ──────────────────────────────────────────────────────────
 
+  /** Initialize schema, create 5-pillar graph nodes, and start the memory daemon. */
   async bootstrap(params: {
     sessionId: string;
     sessionKey?: string;
@@ -139,6 +141,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
   // ── Assemble ───────────────────────────────────────────────────────────
 
+  /** Build the context window: graph retrieval + system prompt additions + budget trimming. */
   async assemble(params: {
     sessionId: string;
     sessionKey?: string;
@@ -250,6 +253,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
   // ── Ingest ─────────────────────────────────────────────────────────────
 
+  /** Embed and store a single user or assistant message as a turn node. */
   async ingest(params: {
     sessionId: string;
     sessionKey?: string;
@@ -347,6 +351,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
   // ── Compact ────────────────────────────────────────────────────────────
 
+  /** Extract structured signals (pending work, key files, errors) for post-compaction injection. */
   async compact(params: {
     sessionId: string;
     sessionKey?: string;
@@ -439,6 +444,7 @@ export class KongBrainContextEngine implements ContextEngine {
 
   // ── After turn ─────────────────────────────────────────────────────────
 
+  /** Post-turn: ingest messages, evaluate retrieval quality, flush daemon, and run periodic maintenance. */
   async afterTurn?(params: {
     sessionId: string;
     sessionKey?: string;

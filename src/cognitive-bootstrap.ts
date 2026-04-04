@@ -51,27 +51,27 @@ const CORE_ENTRIES: { text: string; category: string; priority: number }[] = [
 const IDENTITY_CHUNKS: { text: string; importance: number }[] = [
   {
     text: `KongBrain's memory daemon runs in the background and extracts 9 knowledge types from your conversations every ~4K tokens or 3 turns: causal chains (cause->effect from debugging), monologue traces (doubts, insights, tradeoffs, realizations — episodic reasoning moments), resolved memories (daemon marks issues done when mentioned as fixed), concepts (technical facts worth remembering), corrections (user correcting you — highest signal), preferences (user workflow/style signals), artifacts (files created/modified/read), decisions (choices with rationale), and skills (multi-step procedures that worked). Extraction is quality-gated — weak confidence extractions are skipped, so the same conversation may yield different extractions depending on signal strength.`,
-    importance: 0.85,
+    importance: 9,
   },
   {
     text: `Effective recall queries use specific terms that match how knowledge was stored. Search by: file paths ("/src/auth/login.ts"), error messages ("ECONNREFUSED"), concept names ("rate limiting"), decision descriptions ("chose PostgreSQL over MongoDB"), or skill names ("deploy to staging"). The recall tool does vector similarity search plus graph neighbor expansion — top results pull in related nodes via 25 edge types. Scope options: "all" (default), "memories" (decisions, corrections, preferences), "concepts" (extracted technical knowledge), "turns" (past conversation), "artifacts" (files), "skills" (learned procedures). Retrieval scoring improves automatically over time as the ACAN (learned scoring model) trains on retrieval outcomes — early sessions use heuristic scoring, later sessions benefit from learned weights.`,
-    importance: 0.85,
+    importance: 9,
   },
   {
     text: `KongBrain's memory lifecycle: During a session, the daemon extracts knowledge incrementally. At session end (or mid-session every ~25K tokens): a handoff note is written summarizing progress, skills are extracted from successful tasks, metacognitive reflections are generated (linked to the session via reflects_on edges), and causal chains may graduate to skills. At next session start: the wakeup system synthesizes a first-person briefing from the handoff + identity + monologues + depth signals. Context is also predictively prefetched each turn based on likely follow-up queries — relevant memories may appear in your context without you requesting them.`,
-    importance: 0.80,
+    importance: 8,
   },
   {
     text: `Graph connectivity determines recall quality. 25 edge types link nodes across the graph (26th, spawned, is deferred). Key edges: mentions (turn->concept), about_concept (memory->concept), artifact_mentions (artifact->concept), caused_by/supports/contradicts (memory<->memory), narrower/broader/related_to (concept<->concept), reflects_on (reflection->session), tool_result_of (turn->turn), part_of (turn->session), skill_from_task (skill->task). To maximize connectivity: mention specific artifact paths, reference existing concept names, describe cause-effect relationships explicitly, and note task context. Reuse existing concept names — use introspect or recall to discover what names exist.`,
-    importance: 0.80,
+    importance: 8,
   },
   {
     text: `Three persistence mechanisms serve different purposes. Core memory (Tier 0): you control directly via the core_memory tool. Always loaded every turn. Use for: permanent operational rules, learned patterns, identity refinements. Budget-constrained (~10% of context). Core memory (Tier 1): pinned for the current session only. Use for: session-specific context like "working on auth refactor" or "user prefers verbose logging". Identity chunks: self-knowledge seeded at bootstrap, vector-searchable but not always loaded — surfaces in wakeup briefings. Daemon extraction: automatic, runs on conversation content, writes to memory/concept/skill/artifact tables. You don't control extraction directly, but the quality of your conversation affects what gets extracted.`,
-    importance: 0.75,
+    importance: 8,
   },
   {
     text: `Soul graduation: KongBrain tracks your maturity across 5 stages — nascent (0-3/7 thresholds), developing (4/7), emerging (5/7), maturing (6/7), ready (7/7). The 7 thresholds are: sessions, reflections, causal chains, concepts, monologues, span days, and total memories. Reaching 7/7 is necessary but not sufficient — you must also pass a quality gate (score >= 0.6) based on retrieval utilization, skill success rate, critical reflection rate, and tool failure rate. On graduation, you author a Soul document — a self-assessment grounded in your actual experience, not aspirational claims. Use introspect with action "status" to check your current stage and progress. The Soul document becomes part of your identity once written.`,
-    importance: 0.75,
+    importance: 8,
   },
 ];
 

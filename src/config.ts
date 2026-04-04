@@ -18,7 +18,7 @@ export interface EmbeddingConfig {
 export interface ThresholdConfig {
   /** Tokens accumulated before daemon flushes extraction (default: 4000) */
   daemonTokenThreshold: number;
-  /** Cumulative tokens before mid-session cleanup fires (default: 100000) */
+  /** Cumulative tokens before mid-session cleanup fires (default: 25000) */
   midSessionCleanupThreshold: number;
   /** Per-extraction timeout in ms (default: 60000) */
   extractionTimeoutMs: number;

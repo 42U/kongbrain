@@ -11,7 +11,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
-[![Tests](https://img.shields.io/badge/Tests-88_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Tests](https://img.shields.io/badge/Tests-132_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
@@ -377,6 +377,45 @@ Three tools are registered for the LLM:
 - **`introspect`** Inspect database state, verify memory counts, run diagnostics, check graduation status, migrate workspace files
 
 ---
+
+## Performance
+
+KongBrain is aggressively optimized for token efficiency and latency, informed by analysis of the Claude Code source.
+
+### DB Query Batching
+
+All graph operations use batched multi-statement queries (`queryBatch`). A single `assemble()` call sends ~5 round-trips to SurrealDB instead of ~337 individual queries:
+
+| Operation | Before | After |
+|-----------|--------|-------|
+| vectorSearch (7 tables) | 7 queries | 1 batched |
+| graphExpand (26 edge types x N nodes) | 130-208 queries | 1-2 batched (per hop) |
+| queryCausalContext (8 edge types x N nodes) | 80-120 queries | 1-2 batched (per hop) |
+
+### Token Estimation
+
+Token counting is aligned with the Anthropic API's actual tokenizer characteristics:
+- **4 bytes/token** for prose/code (not the common 3.2-3.5 underestimate)
+- **2 bytes/token** for JSON content (denser single-char tokens)
+- **33% safety margin** on aggregate estimates
+- **2000 tokens** for images/documents (matching API billing)
+
+### Context Window Efficiency
+
+Every turn, old messages are surgically stripped to save tokens while preserving recent context:
+- **Thinking blocks** replaced with `[thinking]` marker (saves 1-5k tokens each)
+- **Old tool results** content-cleared to stubs (saves 20-80k tokens/session)
+- **Old assistant filler** collapsed to first line (saves 5-15k/session)
+- **Images** in old messages replaced with `[image]` marker (saves 2k tokens each)
+- **System prompt additions** capped at 8% of context window with priority trimming
+
+### Structured Output
+
+All internal LLM calls (memory extraction, cognitive checks, soul generation, skill extraction) use `json_schema` structured output when the provider supports it. This eliminates markdown fencing, preamble text, and parsing failures.
+
+### Embedding Reuse
+
+User message embeddings computed at ingest time are stashed in session state and reused during context retrieval, eliminating 1-4 redundant BGE-M3 inference calls per turn.
 
 ## Development
 

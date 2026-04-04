@@ -7,6 +7,7 @@ import { swallow } from "./errors.js";
 type LlamaEmbeddingContext = import("node-llama-cpp").LlamaEmbeddingContext;
 type LlamaModel = import("node-llama-cpp").LlamaModel;
 
+/** BGE-M3 embedding service (1024-dim via GGUF) with an LRU cache of up to 512 entries. */
 export class EmbeddingService {
   private model: LlamaModel | null = null;
   private ctx: LlamaEmbeddingContext | null = null;
@@ -40,6 +41,7 @@ export class EmbeddingService {
     return true;
   }
 
+  /** Return the embedding vector for text, serving from LRU cache on repeat calls. */
   async embed(text: string): Promise<number[]> {
     if (!this.ready || !this.ctx) throw new Error("Embeddings not initialized");
     const cached = this.cache.get(text);

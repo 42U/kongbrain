@@ -40,6 +40,7 @@ export type CompleteFn = (params: CompleteParams) => Promise<CompleteResult>;
 
 const DEFAULT_TOOL_LIMIT = 10;
 
+/** Per-session mutable state: turn counters, daemon refs, 5-pillar IDs, and adaptive config. */
 export class SessionState {
   readonly sessionId: string;
   readonly sessionKey: string;
@@ -128,6 +129,7 @@ export class SessionState {
 /** Function to enqueue a system event visible to the user. */
 export type EnqueueSystemEventFn = (text: string, options: { sessionKey: string }) => boolean;
 
+/** Singleton shared state: config, SurrealDB store, embedding service, and session map. */
 export class GlobalPluginState {
   readonly config: KongBrainConfig;
   readonly store: SurrealStore;

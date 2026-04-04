@@ -54,6 +54,26 @@ function assertRecordId(id: string): void {
   }
 }
 
+/** Whitelist of valid SurrealDB edge table names — prevents SQL injection via edge interpolation. */
+const VALID_EDGES = new Set([
+  // Semantic edges
+  "responds_to", "tool_result_of", "summarizes", "mentions", "related_to",
+  "narrower", "broader", "about_concept", "reflects_on",
+  // Skill edges
+  "skill_from_task", "skill_uses_concept",
+  // Structural pillar edges
+  "owns", "performed", "task_part_of", "session_task",
+  "produced", "derived_from", "relevant_to", "used_in", "artifact_mentions",
+  // Causal edges
+  "caused_by", "supports", "contradicts", "describes",
+  // Session edges
+  "part_of",
+]);
+
+function assertValidEdge(edge: string): void {
+  if (!VALID_EDGES.has(edge)) throw new Error(`Invalid edge name: ${edge}`);
+}
+
 function patchOrderByFields(sql: string): string {
   const s = sql.trim();
   if (!/^\s*SELECT\b/i.test(s) || !/\bORDER\s+BY\b/i.test(s)) return sql;
@@ -281,9 +301,8 @@ export class SurrealStore {
   }
 
   /**
-   * Execute N SQL statements in a single round-trip. Returns an array of result
-   * arrays (one per statement). Bindings are shared across all statements.
-   * Limits are inlined in SQL (not bindable per-statement in multi-statement mode).
+   * Execute N SQL statements in a single SurrealDB round-trip.
+   * Returns one result array per statement; bindings are shared across all statements.
    */
   async queryBatch<T = any>(statements: string[], bindings?: Record<string, unknown>): Promise<T[][]> {
     if (statements.length === 0) return [];
@@ -313,6 +332,7 @@ export class SurrealStore {
 
   // ── Vector search ──────────────────────────────────────────────────────
 
+  /** Multi-table cosine similarity search across turns, concepts, memories, artifacts, monologues, and identity chunks. Returns merged results sorted by score. */
   async vectorSearch(
     vec: number[],
     sessionId: string,
@@ -567,12 +587,20 @@ export class SurrealStore {
 
   // ── Graph traversal ────────────────────────────────────────────────────
 
+  /**
+   * BFS expansion from seed nodes along typed edges, with batched per-hop queries.
+   * Each edge query is LIMIT 3 (EDGE_NEIGHBOR_LIMIT) to bound fan-out per node.
+   */
   async graphExpand(
     nodeIds: string[],
     queryVec: number[],
     hops = 1,
   ): Promise<VectorSearchResult[]> {
     if (nodeIds.length === 0) return [];
+
+    const MAX_FRONTIER_SEEDS = 5;   // max seed nodes to start BFS from
+    const MAX_FRONTIER_PER_HOP = 3; // max nodes carried forward per hop (by score)
+    const EDGE_NEIGHBOR_LIMIT = 3;  // max neighbors per edge traversal (inlined in SQL LIMIT)
 
     const forwardEdges = [
       // Semantic edges
@@ -599,14 +627,14 @@ export class SurrealStore {
 
     const seen = new Set<string>(nodeIds);
     const allNeighbors: VectorSearchResult[] = [];
-    let frontier = nodeIds.slice(0, 5).filter((id) => RECORD_ID_RE.test(id));
+    let frontier = nodeIds.slice(0, MAX_FRONTIER_SEEDS).filter((id) => RECORD_ID_RE.test(id));
 
     for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
       // Batch all edge traversals for this hop in a single round-trip
       const stmts: string[] = [];
       for (const id of frontier) {
-        for (const edge of forwardEdges) stmts.push(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`);
-        for (const edge of reverseEdges) stmts.push(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`);
+        for (const edge of forwardEdges) { assertValidEdge(edge); stmts.push(`${selectFields} FROM ${id}->${edge}->? LIMIT ${EDGE_NEIGHBOR_LIMIT}`); }
+        for (const edge of reverseEdges) { assertValidEdge(edge); stmts.push(`${selectFields} FROM ${id}<-${edge}<-? LIMIT ${EDGE_NEIGHBOR_LIMIT}`); }
       }
 
       let queryResults: any[][];
@@ -645,7 +673,7 @@ export class SurrealStore {
 
       frontier = nextFrontier
         .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
+        .slice(0, MAX_FRONTIER_PER_HOP)
         .map((n) => n.id);
     }
 
@@ -1451,4 +1479,4 @@ export class SurrealStore {
   }
 }
 
-export { assertRecordId };
+export { assertRecordId, assertValidEdge, VALID_EDGES };

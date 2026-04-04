@@ -71,9 +71,13 @@ const RETRIEVAL_SHARE = 0.385;       // ~25k for graph-curated context
 const CORE_MEMORY_SHARE = 0.155;     // ~10k for core memory/directives
 const TOOL_HISTORY_SHARE = 0.23;     // ~15k for recent tool results
 const CORE_MEMORY_TTL = 300_000;
-const MAX_ITEM_CHARS = 1200; // ~350 tokens per item cap (claw-code: MAX_INSTRUCTION_FILE_CHARS)
-const MIN_RELEVANCE_SCORE = 0.35;
-const MIN_COSINE = 0.25;
+const MAX_ITEM_CHARS = 1200; // ~350 tokens per item (matches claw-code MAX_INSTRUCTION_FILE_CHARS)
+const MIN_RELEVANCE_SCORE = 0.35; // Floor for graph-scored results after WMR/ACAN
+const MIN_COSINE = 0.25; // Minimum cosine similarity to consider a result
+
+// Deduplication thresholds
+const DEDUP_COSINE_THRESHOLD = 0.88;
+const DEDUP_JACCARD_THRESHOLD = 0.80;
 
 // Recency decay
 const RECENCY_DECAY_FAST = 0.99;
@@ -105,7 +109,7 @@ export interface Budgets {
   maxContextItems: number;
 }
 
-/** @internal Exported for testing. */
+/** Split the context window into 4 budgets: conversation, retrieval, core memory, and tool history. @internal */
 export function calcBudgets(contextWindow: number): Budgets {
   const total = contextWindow * BUDGET_FRACTION;
   const retrieval = Math.round(total * RETRIEVAL_SHARE);
@@ -236,6 +240,7 @@ function accessBoost(accessCount: number | undefined): number {
   return Math.log1p(accessCount ?? 0);
 }
 
+/** Dot-product cosine similarity between two equal-length vectors. Returns 0 if either has zero magnitude. */
 export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
@@ -420,7 +425,7 @@ function deduplicateResults(ranked: ScoredResult[]): ScoredResult[] {
       const existing = ranked[ki];
       if (item.embedding?.length && existing.embedding?.length
           && item.embedding.length === existing.embedding.length) {
-        if (cosineSimilarity(item.embedding, existing.embedding) > 0.88) { isDup = true; break; }
+        if (cosineSimilarity(item.embedding, existing.embedding) > DEDUP_COSINE_THRESHOLD) { isDup = true; break; }
         continue;
       }
       const words = wordSets[i];
@@ -428,7 +433,7 @@ function deduplicateResults(ranked: ScoredResult[]): ScoredResult[] {
       let intersection = 0;
       for (const w of words) { if (eWords.has(w)) intersection++; }
       const union = words.size + eWords.size - intersection;
-      if (union > 0 && intersection / union > 0.80) { isDup = true; break; }
+      if (union > 0 && intersection / union > DEDUP_JACCARD_THRESHOLD) { isDup = true; break; }
     }
     if (!isDup) { kept.push(item); keptIndexes.push(i); }
   }
@@ -925,8 +930,8 @@ export interface GraphTransformResult {
 }
 
 /**
- * Transform conversation messages using graph-based context retrieval.
- * This is the core "assemble" logic — called from ContextEngine.assemble().
+ * Main entry point for graph-based context assembly. Retrieves, scores, deduplicates,
+ * and budget-trims graph nodes, then splices them into the conversation message array.
  */
 export async function graphTransformContext(
   params: GraphTransformParams,
