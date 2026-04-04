@@ -97,10 +97,15 @@ export async function extractSkill(
 
     if (text.trim() === "null" || text.trim() === "None") return null;
 
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]) as ExtractedSkill;
+    // Try direct JSON.parse first (structured output), fall back to regex extraction
+    let parsed: ExtractedSkill;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/); // greedy — handles nested objects
+      if (!jsonMatch) return null;
+      parsed = JSON.parse(jsonMatch[0]) as ExtractedSkill;
+    }
     if (!parsed.name || !parsed.description || !Array.isArray(parsed.steps) || parsed.steps.length === 0) {
       return null;
     }
