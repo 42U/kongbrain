@@ -134,33 +134,25 @@ export async function queryCausalContext(
          ELSE 0 END AS score`;
 
   for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
-    const queries = frontier.flatMap((id) => {
+    // Batch all edge traversals for this hop in a single round-trip
+    const selectFields = `SELECT id, text, importance, access_count AS accessCount,
+                  created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}`;
+    const stmts: string[] = [];
+    for (const id of frontier) {
       assertRecordId(id);
-      // Direct interpolation safe: assertRecordId validates format above
-      return causalEdges.map((edge) =>
-        store.queryFirst<any>(
-          `SELECT id, text, importance, access_count AS accessCount,
-                  created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM ${id}->${edge}->? LIMIT 3`,
-          bindings,
-        ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
-      );
-    });
+      for (const edge of causalEdges) {
+        stmts.push(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`);
+        stmts.push(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`);
+      }
+    }
 
-    const reverseQueries = frontier.flatMap((id) => {
-      assertRecordId(id);
-      // Direct interpolation safe: assertRecordId validates format above
-      return causalEdges.map((edge) =>
-        store.queryFirst<any>(
-          `SELECT id, text, importance, access_count AS accessCount,
-                  created_at AS timestamp, category, meta::tb(id) AS table${scoreExpr}
-           FROM ${id}<-${edge}<-? LIMIT 3`,
-          bindings,
-        ).catch(e => { swallow.warn("causal:edge-query", e); return [] as any[]; }),
-      );
-    });
-
-    const allQueryResults = await Promise.all([...queries, ...reverseQueries]);
+    let allQueryResults: any[][];
+    try {
+      allQueryResults = await store.queryBatch<any>(stmts, bindings);
+    } catch (e) {
+      swallow.warn("causal:batch", e);
+      break;
+    }
     const nextFrontier: string[] = [];
 
     for (const rows of allQueryResults) {

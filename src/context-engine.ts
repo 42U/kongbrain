@@ -276,6 +276,11 @@ export class KongBrainContextEngine implements ContextEngine {
           } catch (e) { swallow("ingest:embed", e); }
         }
 
+        // Stash user embedding for reuse in buildContextualQueryVec (avoids re-embedding)
+        if (role === "user" && embedding) {
+          session.lastUserEmbedding = embedding;
+        }
+
         const turnId = await store.upsertTurn({
           session_id: session.sessionId,
           role,
@@ -473,11 +478,12 @@ export class KongBrainContextEngine implements ContextEngine {
         .catch(e => swallow.warn("afterTurn:evaluateRetrieval", e));
     }
 
+    // Single fetch for all downstream consumers (cognitive check, daemon flush, handoff)
+    const allSessionTurns = await store.getSessionTurns(session.sessionId, 50)
+      .catch(() => [] as { role: string; text: string }[]);
+
     // Cognitive check: periodic reasoning over retrieved context
     if (shouldRunCheck(session.userTurnCount, session) && stagedSnapshot.length > 0) {
-      const recentTurns = await store.getSessionTurns(session.sessionId, 6)
-        .catch(() => [] as { role: string; text: string }[]);
-
       runCognitiveCheck({
         sessionId: session.sessionId,
         userQuery: session.lastUserText,
@@ -488,7 +494,7 @@ export class KongBrainContextEngine implements ContextEngine {
           score: n.finalScore ?? 0,
           table: n.table,
         })),
-        recentTurns,
+        recentTurns: allSessionTurns.slice(-6),
       }, session, store, this.state.complete).catch(e => swallow.warn("afterTurn:cognitiveCheck", e));
     }
 
@@ -497,7 +503,7 @@ export class KongBrainContextEngine implements ContextEngine {
     const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
     if (session.daemon && (tokenReady || turnReady)) {
       try {
-        const recentTurns = await store.getSessionTurns(session.sessionId, 20);
+        const recentTurns = allSessionTurns.slice(-20);
         const turnData = recentTurns.map(t => ({
           role: t.role as "user" | "assistant",
           text: t.text,
@@ -534,20 +540,14 @@ export class KongBrainContextEngine implements ContextEngine {
       // Fire-and-forget: these are non-critical background operations
       const cleanupOps: Promise<unknown>[] = [];
 
-      // Final daemon flush with full transcript before cleanup
+      // Final daemon flush with full transcript before cleanup (reuse allSessionTurns)
       if (session.daemon) {
-        cleanupOps.push(
-          store.getSessionTurns(session.sessionId, 50)
-            .then(recentTurns => {
-              const turnData = recentTurns.map(t => ({
-                role: t.role as "user" | "assistant",
-                text: t.text,
-                turnId: String((t as any).id ?? ""),
-              }));
-              session.daemon!.sendTurnBatch(turnData, [...session.pendingThinking], []);
-            })
-            .catch(e => swallow.warn("midCleanup:daemonFlush", e)),
-        );
+        const turnData = allSessionTurns.map(t => ({
+          role: t.role as "user" | "assistant",
+          text: t.text,
+          turnId: String((t as any).id ?? ""),
+        }));
+        session.daemon.sendTurnBatch(turnData, [...session.pendingThinking], []);
       }
 
       if (session.taskId) {
@@ -573,10 +573,10 @@ export class KongBrainContextEngine implements ContextEngine {
           .catch(e => swallow("midCleanup:acan", e)),
       );
 
-      // Handoff note — snapshot for wakeup even if session continues
+      // Handoff note — snapshot for wakeup even if session continues (reuse allSessionTurns)
       cleanupOps.push(
         (async () => {
-          const recentTurns = await store.getSessionTurns(session.sessionId, 15);
+          const recentTurns = allSessionTurns.slice(-15);
           if (recentTurns.length < 2) return;
           const turnSummary = recentTurns
             .map(t => `[${t.role}] ${t.text.slice(0, 200)}`)

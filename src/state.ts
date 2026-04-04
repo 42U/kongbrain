@@ -49,6 +49,8 @@ export class SessionState {
   lastAssistantTurnId = "";
   lastUserText = "";
   lastAssistantText = "";
+  /** Embedding of last user message from ingest — reused in buildContextualQueryVec to avoid re-embedding. */
+  lastUserEmbedding: number[] | null = null;
   toolCallCount = 0;
   toolLimit = DEFAULT_TOOL_LIMIT;
   turnTextLength = 0;

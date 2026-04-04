@@ -85,12 +85,14 @@ const VALID_RECORD_ID = /^[a-z_]+:[a-zA-Z0-9_]+$/;
 
 // --- Public API ---
 
-/** Returns true on turn 2, then every 3 turns (2, 5, 8, 11...). False if in-flight. */
+/** Returns true on turn 2, then every 5 turns (2, 7, 12, 17...). False if in-flight or retrieval skipped. */
 export function shouldRunCheck(turnCount: number, session: SessionState): boolean {
   const state = getState(session);
   if (state.checkInFlight) return false;
   if (turnCount < 2) return false;
-  return turnCount === 2 || (turnCount - 2) % 3 === 0;
+  // Skip when retrieval is disabled — no context to evaluate
+  if (session.currentConfig?.skipRetrieval) return false;
+  return turnCount === 2 || (turnCount - 2) % 5 === 0;
 }
 
 export function getPendingDirectives(session: SessionState): CognitiveDirective[] {

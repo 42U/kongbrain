@@ -280,6 +280,25 @@ export class SurrealStore {
     });
   }
 
+  /**
+   * Execute N SQL statements in a single round-trip. Returns an array of result
+   * arrays (one per statement). Bindings are shared across all statements.
+   * Limits are inlined in SQL (not bindable per-statement in multi-statement mode).
+   */
+  async queryBatch<T = any>(statements: string[], bindings?: Record<string, unknown>): Promise<T[][]> {
+    if (statements.length === 0) return [];
+    await this.ensureConnected();
+    return this.withRetry(async () => {
+      const ns = this.config.ns;
+      const dbName = this.config.db;
+      const joined = statements.map(s => patchOrderByFields(s)).join(";\n");
+      const fullSql = `USE NS ${ns} DB ${dbName};\n${joined}`;
+      const raw = await this.db.query(fullSql, bindings) as unknown[];
+      // First result is the USE statement (empty), skip it
+      return raw.slice(1).map(r => (Array.isArray(r) ? r : []).filter(Boolean)) as T[][];
+    });
+  }
+
   private async safeQuery(
     sql: string,
     bindings: Record<string, unknown>,
@@ -319,74 +338,52 @@ export class SurrealStore {
     const crossTurnLim = lim.turn - sessionTurnLim;
     const emb = withEmbeddings ? ", embedding" : "";
 
-    const [sessionTurns, crossTurns, concepts, memories, artifacts, monologues, identityChunks] =
-      await Promise.all([
-        this.safeQuery(
-          `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM turn
-           WHERE embedding != NONE AND array::len(embedding) > 0
-             AND session_id = $sid
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: sessionTurnLim, sid: sessionId },
-        ),
-        this.safeQuery(
-          `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM turn
-           WHERE embedding != NONE AND array::len(embedding) > 0
-             AND session_id != $sid
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: crossTurnLim, sid: sessionId },
-        ),
-        this.safeQuery(
-          `SELECT id, content AS text, stability AS importance, access_count AS accessCount,
-                  created_at AS timestamp, 'concept' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM concept
-           WHERE embedding != NONE AND array::len(embedding) > 0
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: lim.concept },
-        ),
-        this.safeQuery(
-          `SELECT id, text, importance, access_count AS accessCount,
-                  created_at AS timestamp, session_id AS sessionId, 'memory' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM memory
-           WHERE embedding != NONE AND array::len(embedding) > 0
-             AND (status = 'active' OR status IS NONE)
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: lim.memory },
-        ),
-        this.safeQuery(
-          `SELECT id, description AS text, 0 AS accessCount,
-                  created_at AS timestamp, 'artifact' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM artifact
-           WHERE embedding != NONE AND array::len(embedding) > 0
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: lim.artifact },
-        ),
-        this.safeQuery(
-          `SELECT id, content AS text, category AS source, 0.5 AS importance, 0 AS accessCount,
-                  timestamp, 'monologue' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM monologue
-           WHERE embedding != NONE AND array::len(embedding) > 0
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: lim.monologue },
-        ),
-        // Identity chunks — agent self-knowledge, searchable mid-conversation
-        this.safeQuery(
-          `SELECT id, text, importance, 0 AS accessCount,
-                  'identity_chunk' AS table,
-                  vector::similarity::cosine(embedding, $vec) AS score${emb}
-           FROM identity_chunk
-           WHERE embedding != NONE AND array::len(embedding) > 0
-           ORDER BY score DESC LIMIT $lim`,
-          { vec, lim: lim.identity },
-        ),
-      ]);
+    // Batch all 7 vector searches into a single round-trip (limits inlined — per-table)
+    const stmts = [
+      `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM turn WHERE embedding != NONE AND array::len(embedding) > 0
+         AND session_id = $sid ORDER BY score DESC LIMIT ${sessionTurnLim}`,
+      `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM turn WHERE embedding != NONE AND array::len(embedding) > 0
+         AND session_id != $sid ORDER BY score DESC LIMIT ${crossTurnLim}`,
+      `SELECT id, content AS text, stability AS importance, access_count AS accessCount,
+              created_at AS timestamp, 'concept' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM concept WHERE embedding != NONE AND array::len(embedding) > 0
+       ORDER BY score DESC LIMIT ${lim.concept}`,
+      `SELECT id, text, importance, access_count AS accessCount,
+              created_at AS timestamp, session_id AS sessionId, 'memory' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM memory WHERE embedding != NONE AND array::len(embedding) > 0
+         AND (status = 'active' OR status IS NONE) ORDER BY score DESC LIMIT ${lim.memory}`,
+      `SELECT id, description AS text, 0 AS accessCount,
+              created_at AS timestamp, 'artifact' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM artifact WHERE embedding != NONE AND array::len(embedding) > 0
+       ORDER BY score DESC LIMIT ${lim.artifact}`,
+      `SELECT id, content AS text, category AS source, 0.5 AS importance, 0 AS accessCount,
+              timestamp, 'monologue' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM monologue WHERE embedding != NONE AND array::len(embedding) > 0
+       ORDER BY score DESC LIMIT ${lim.monologue}`,
+      `SELECT id, text, importance, 0 AS accessCount,
+              'identity_chunk' AS table,
+              vector::similarity::cosine(embedding, $vec) AS score${emb}
+       FROM identity_chunk WHERE embedding != NONE AND array::len(embedding) > 0
+       ORDER BY score DESC LIMIT ${lim.identity}`,
+    ];
+
+    let batchResults: any[][];
+    try {
+      batchResults = await this.queryBatch<any>(stmts, { vec, sid: sessionId });
+    } catch (e) {
+      swallow.warn("surreal:vectorSearch:batch", e);
+      return [];
+    }
+    const [sessionTurns = [], crossTurns = [], concepts = [], memories = [], artifacts = [], monologues = [], identityChunks = []] =
+      batchResults as VectorSearchResult[][];
     return [
       ...sessionTurns,
       ...crossTurns,
@@ -605,29 +602,20 @@ export class SurrealStore {
     let frontier = nodeIds.slice(0, 5).filter((id) => RECORD_ID_RE.test(id));
 
     for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
-      const forwardQueries = frontier.flatMap((id) =>
-        forwardEdges.map((edge) =>
-          this.queryFirst<any>(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`, bindings).catch(
-            (e) => {
-              swallow.warn("surreal:graphExpand", e);
-              return [] as Record<string, unknown>[];
-            },
-          ),
-        ),
-      );
+      // Batch all edge traversals for this hop in a single round-trip
+      const stmts: string[] = [];
+      for (const id of frontier) {
+        for (const edge of forwardEdges) stmts.push(`${selectFields} FROM ${id}->${edge}->? LIMIT 3`);
+        for (const edge of reverseEdges) stmts.push(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`);
+      }
 
-      const reverseQueries = frontier.flatMap((id) =>
-        reverseEdges.map((edge) =>
-          this.queryFirst<any>(`${selectFields} FROM ${id}<-${edge}<-? LIMIT 3`, bindings).catch(
-            (e) => {
-              swallow.warn("surreal:graphExpand", e);
-              return [] as Record<string, unknown>[];
-            },
-          ),
-        ),
-      );
-
-      const queryResults = await Promise.all([...forwardQueries, ...reverseQueries]);
+      let queryResults: any[][];
+      try {
+        queryResults = await this.queryBatch<any>(stmts, bindings);
+      } catch (e) {
+        swallow.warn("surreal:graphExpand:batch", e);
+        break;
+      }
       const nextFrontier: { id: string; score: number }[] = [];
 
       for (const rows of queryResults) {

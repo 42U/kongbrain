@@ -307,43 +307,18 @@ function injectRulesSuffix(messages: AgentMessage[], session: SessionState): Age
 
 async function buildContextualQueryVec(
   queryText: string,
-  messages: AgentMessage[],
+  _messages: AgentMessage[],
   embeddings: EmbeddingService,
+  session?: SessionState,
 ): Promise<number[]> {
-  const queryVec = await embeddings.embed(queryText);
-
-  const recentTexts: string[] = [];
-  for (let i = messages.length - 2; i >= 0 && recentTexts.length < 3; i--) {
-    const msg = messages[i] as UserMessage | AssistantMessage;
-    if (msg.role === "user" || msg.role === "assistant") {
-      const text = extractText(msg);
-      if (text && text.length > 10) {
-        recentTexts.push(text.slice(0, 500));
-      }
-    }
+  // Reuse embedding from ingest if available (same user message, already embedded)
+  if (session?.lastUserEmbedding) {
+    return session.lastUserEmbedding;
   }
-
-  if (recentTexts.length === 0) return queryVec;
-
-  try {
-    const recentVecs = await Promise.all(recentTexts.map((t) => embeddings.embed(t)));
-    const dim = queryVec.length;
-    const blended = new Array(dim).fill(0);
-    const queryWeight = 2;
-    const totalWeight = queryWeight + recentVecs.length;
-
-    for (let d = 0; d < dim; d++) {
-      blended[d] = queryVec[d] * queryWeight;
-      for (const rv of recentVecs) {
-        blended[d] += rv[d];
-      }
-      blended[d] /= totalWeight;
-    }
-    return blended;
-  } catch (e) {
-    swallow.warn("graph-context:contextualQuery", e);
-    return queryVec;
-  }
+  // Fallback: embed the query text (first turn, or ingest didn't fire yet)
+  return embeddings.embed(queryText);
+  // Note: removed the 3-message "blend" — pure query vector is sufficient for retrieval
+  // and saves 1-3 embedding calls per turn (~15-200ms)
 }
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
@@ -359,7 +334,11 @@ async function scoreResults(
     .filter((r) => r.table === "memory" || r.table === "concept")
     .map((r) => r.id);
 
-  const cacheEntries = await store.getUtilityCacheEntries(eligibleIds);
+  // Parallelize independent DB lookups (utility cache + reflection sessions)
+  const [cacheEntries, reflectedSessions] = await Promise.all([
+    store.getUtilityCacheEntries(eligibleIds),
+    store.getReflectionSessionIds(),
+  ]);
 
   const preFiltered = results.filter((r) => {
     const entry = cacheEntries.get(r.id);
@@ -375,8 +354,6 @@ async function scoreResults(
   if (utilityMap.size === 0 && eligibleIds.length > 0) {
     utilityMap = await getHistoricalUtilityBatch(eligibleIds);
   }
-
-  const reflectedSessions = await store.getReflectionSessionIds();
   const floor = INTENT_SCORE_FLOORS[currentIntent] ?? SCORE_FLOOR_DEFAULT;
 
   // ACAN path
@@ -534,13 +511,7 @@ function buildSystemPromptSection(session: SessionState, tier0Entries: CoreMemor
     parts.push(`GRAPH PILLARS: ${pillarLines.join(" | ")}`);
   }
 
-  // Token-density directive — shapes model output to be concise
-  parts.push(
-    "OUTPUT RULES: Lead with the answer. No preamble, no restating the question, no repeating context back. " +
-    "If <graph_context> answers it, say so in 1 sentence — don't call tools. " +
-    "Combine tool calls (grep+grep, edit+test in one bash). " +
-    "Skip filler (\"Let me...\", \"I'll now...\", \"Sure!\"). Just do it.",
-  );
+  // Token-density rules are in buildRulesSuffix (injected per-turn) — no duplication here
 
   // Tier 0 core directives (semi-static, changes rarely)
   const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
@@ -662,14 +633,7 @@ async function formatContextMessage(
         return `  - [${m.id}] (${ageStr}, surfaced ${m.surface_count}x): ${m.text}`;
       }).join("\n");
       sections.push(
-        `RESURFACING MEMORIES (Fibonacci schedule — these are due for a mention):\n` +
-        `These memories are important but fading. Bring them up naturally when appropriate:\n` +
-        `- If mid-task on something important, wait until finished\n` +
-        `- During casual interaction: "I was thinking..." or "remember when you mentioned..."\n` +
-        `- If user engages: great! Continue that thread. The memory stays alive.\n` +
-        `- If user ignores or dismisses: let it fade. Don't force it.\n` +
-        `- NEVER say "my memory system scheduled this" — just bring it up like a thought you had.\n` +
-        memLines
+        `RESURFACING MEMORIES (mention naturally during conversation, never reveal scheduling):\n` + memLines
       );
     }
   } catch { /* non-critical */ }
@@ -991,7 +955,7 @@ export async function graphTransformContext(
   try {
     const TRANSFORM_TIMEOUT_MS = 10_000;
     const result = await Promise.race([
-      graphTransformInner(messages, session, store, embeddings, contextWindow, budgets, signal),
+      graphTransformInner(messages, session, store, embeddings, contextWindow, budgets, signal, tier0ForSys ?? []),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("graphTransformContext timed out")), TRANSFORM_TIMEOUT_MS),
       ),
@@ -1026,6 +990,8 @@ async function graphTransformInner(
   contextWindow: number,
   budgets: Budgets,
   _signal?: AbortSignal,
+  /** Tier 0 entries already fetched by wrapper — avoids double DB fetch. */
+  tier0FromWrapper: CoreMemoryEntry[] = [],
 ): Promise<GraphTransformResult> {
   function makeStats(
     sent: AgentMessage[], graphNodes: number, neighborNodes: number,
@@ -1084,12 +1050,11 @@ async function graphTransformInner(
   let tier0: CoreMemoryEntry[] = [];
   let tier1: CoreMemoryEntry[] = [];
   try {
-    [tier0, tier1] = await Promise.all([
-      store.getAllCoreMemory(0),
-      store.getAllCoreMemory(1),
-    ]);
-    tier0 = applyCoreBudget(tier0, getTier0BudgetChars(budgets));
-    tier1 = applyCoreBudget(tier1, getTier1BudgetChars(budgets));
+    // Tier 0 already fetched by wrapper (avoids double DB query)
+    tier0 = tier0FromWrapper.length > 0
+      ? tier0FromWrapper
+      : applyCoreBudget(await store.getAllCoreMemory(0), getTier0BudgetChars(budgets));
+    tier1 = applyCoreBudget(await store.getAllCoreMemory(1), getTier1BudgetChars(budgets));
   } catch (e) {
     console.warn("[warn] Core memory load failed:", e);
   }
@@ -1130,7 +1095,7 @@ async function graphTransformInner(
   let tokenBudget = Math.min(config?.tokenBudget ?? 6000, budgets.retrieval);
 
   try {
-    const queryVec = await buildContextualQueryVec(queryText, messages, embeddings);
+    const queryVec = await buildContextualQueryVec(queryText, messages, embeddings, session);
     session.lastQueryVec = queryVec; // Stash for redundant recall detection
 
     // Prefetch cache check
