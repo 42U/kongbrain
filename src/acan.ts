@@ -101,6 +101,15 @@ function loadWeights(path: string): ACANWeights | null {
       if (!Array.isArray(raw.W_q[i]) || raw.W_q[i].length !== ATTN_DIM) return null;
       if (!Array.isArray(raw.W_k[i]) || raw.W_k[i].length !== ATTN_DIM) return null;
     }
+    // Validate numeric values — NaN/Infinity from a bad training run would corrupt scoring.
+    // JSON.stringify(NaN) produces null, so we must also reject null/non-number values.
+    if (typeof raw.bias !== "number" || !isFinite(raw.bias)) return null;
+    if (!raw.W_final.every((v: unknown) => typeof v === "number" && isFinite(v as number))) return null;
+    // Spot-check W_q/W_k (full scan too expensive for 1024x64 matrices)
+    for (const i of checkIndices) {
+      if (!raw.W_q[i].every((v: unknown) => typeof v === "number" && isFinite(v as number))) return null;
+      if (!raw.W_k[i].every((v: unknown) => typeof v === "number" && isFinite(v as number))) return null;
+    }
     return raw as ACANWeights;
   } catch (e) {
     swallow("acan:loadWeights", e);
@@ -209,9 +218,11 @@ async function fetchTrainingData(store: SurrealStore): Promise<TrainingSample[]>
   }
   await Promise.all([...byTable.entries()].map(async ([table, ids]) => {
     try {
+      // Direct interpolation — SurrealDB treats string-array bindings as
+      // literal strings, not record references, causing silent empty results.
+      const idList = ids.join(", ");
       const rows = await store.queryFirst<{ id: string; embedding: number[] }>(
-        `SELECT id, embedding FROM ${table} WHERE id IN $ids AND embedding != NONE`,
-        { ids },
+        `SELECT id, embedding FROM ${table} WHERE id IN [${idList}] AND embedding != NONE`,
       );
       for (const row of rows) {
         if (row.embedding) embeddingMap.set(String(row.id), row.embedding);

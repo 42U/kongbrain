@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      surrealdb:
+        image: surrealdb/surrealdb:latest
+        ports:
+          - 8000:8000
+        options: >-
+          --health-cmd "curl -sf http://localhost:8000/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        env:
+          SURREAL_USER: root
+          SURREAL_PASS: root
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run unit tests
+        run: npx vitest run --exclude test/integration.test.ts
+
+      - name: Run integration tests
+        run: npx vitest run test/integration.test.ts
+        env:
+          SURREAL_URL: ws://localhost:8000/rpc
+          SURREAL_USER: root
+          SURREAL_PASS: root

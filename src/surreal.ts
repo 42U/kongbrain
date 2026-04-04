@@ -1324,9 +1324,13 @@ export class SurrealStore {
       if (rows.length === 0) return [];
       const ids = rows.map((r) => r.memory_id).filter(Boolean);
       if (ids.length === 0) return [];
+      // Direct interpolation — SurrealDB treats string-array bindings as
+      // literal strings, not record references, causing silent empty results.
+      const validated = ids.filter(id => { try { assertRecordId(String(id)); return true; } catch { return false; } });
+      if (validated.length === 0) return [];
+      const idList = validated.join(", ");
       return this.queryFirst<{ id: string; text: string }>(
-        `SELECT id, text FROM memory WHERE id IN $ids AND (status = 'active' OR status IS NONE)`,
-        { ids },
+        `SELECT id, text FROM memory WHERE id IN [${idList}] AND (status = 'active' OR status IS NONE)`,
       );
     } catch (e) {
       swallow.warn("surreal:getSessionRetrievedMemories", e);

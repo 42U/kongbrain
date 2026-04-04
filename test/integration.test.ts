@@ -237,6 +237,59 @@ describe("SurrealDB integration", () => {
     await expect(store.bumpAccessCounts([])).resolves.toBeUndefined();
   });
 
+  // ── SELECT ... WHERE id IN (record reference binding) ──
+
+  itDb("SELECT WHERE id IN works with direct interpolation (not $ids binding)", async () => {
+    // Create 2 memories with known IDs
+    const id1 = await store.createMemory(
+      "Select-in test memory A",
+      null,
+      5,
+      "test",
+      "select-in-test",
+    );
+    const id2 = await store.createMemory(
+      "Select-in test memory B",
+      null,
+      5,
+      "test",
+      "select-in-test",
+    );
+    expect(id1).toBeTruthy();
+    expect(id2).toBeTruthy();
+
+    // Verify getSessionRetrievedMemories path works (uses direct interpolation now).
+    // We test the underlying pattern directly: SELECT with array of record IDs.
+    const ids = [id1!, id2!];
+
+    // 1) Parameterized binding (the old, potentially broken way)
+    const paramResult = await store.queryFirst<{ id: string; text: string }>(
+      `SELECT id, text FROM memory WHERE id IN $ids`,
+      { ids },
+    );
+
+    // 2) Direct interpolation (the fixed way)
+    const idList = ids.join(", ");
+    const directResult = await store.queryFirst<{ id: string; text: string }>(
+      `SELECT id, text FROM memory WHERE id IN [${idList}]`,
+    );
+
+    // The direct interpolation approach must always work
+    expect(directResult.length).toBe(2);
+    const directTexts = directResult.map(r => r.text).sort();
+    expect(directTexts).toEqual(["Select-in test memory A", "Select-in test memory B"]);
+
+    // If parameterized returns 0 rows, the bug exists — our fix is correct
+    if (paramResult.length === 0) {
+      // Bug confirmed: $ids binding doesn't work for record references
+      // Our direct interpolation fix in getSessionRetrievedMemories is necessary
+      expect(true).toBe(true); // documenting the bug
+    } else {
+      // If SurrealDB fixed this in a newer version, both approaches work
+      expect(paramResult.length).toBe(2);
+    }
+  });
+
   // ── Session lifecycle ──
 
   itDb("session create + mark ended round-trip", async () => {

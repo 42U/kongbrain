@@ -270,6 +270,159 @@ describe("checkACANReadiness", () => {
   });
 });
 
+// ── Weight validation: NaN / Infinity rejection ──
+
+describe("ACAN numeric validation", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("rejects weights with NaN in W_final", () => {
+    const weights = makeValidWeights();
+    // Use string placeholder approach: serialize, then patch
+    const json = JSON.stringify(weights);
+    const target = String(weights.W_final[3]);
+    const patched = json.replace(target, "NaN");
+    // NaN is not valid JSON, so loadWeights should fail to parse or reject
+    writeFileSync(join(dir, "acan_weights.json"), patched);
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+    expect(isACANActive()).toBe(false);
+  });
+
+  it("rejects weights with Infinity in W_final", () => {
+    const weights = makeValidWeights();
+    const json = JSON.stringify(weights);
+    const target = String(weights.W_final[0]);
+    const patched = json.replace(target, "Infinity");
+    writeFileSync(join(dir, "acan_weights.json"), patched);
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+
+  it("rejects weights with NaN bias", () => {
+    const weights = makeValidWeights();
+    // Bias appears as "bias":0.1 — replace just the bias value
+    const json = JSON.stringify(weights);
+    const patched = json.replace(/"bias":[\d.]+/, '"bias":NaN');
+    writeFileSync(join(dir, "acan_weights.json"), patched);
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+
+  it("rejects weights with Infinity bias", () => {
+    const weights = makeValidWeights();
+    const json = JSON.stringify(weights);
+    const patched = json.replace(/"bias":[\d.]+/, '"bias":Infinity');
+    writeFileSync(join(dir, "acan_weights.json"), patched);
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+
+  it("rejects weights with null in W_final (simulates JSON-serialized NaN)", () => {
+    // When NaN goes through JSON.stringify it becomes null — loadWeights should reject this
+    const weights = makeValidWeights();
+    (weights.W_final as any)[3] = null;
+    writeFileSync(join(dir, "acan_weights.json"), JSON.stringify(weights));
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+
+  it("rejects weights with null in W_q (simulates JSON-serialized NaN)", () => {
+    const weights = makeValidWeights();
+    (weights.W_q[0] as any)[10] = null;
+    writeFileSync(join(dir, "acan_weights.json"), JSON.stringify(weights));
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+
+  it("rejects weights with null in W_k (simulates JSON-serialized NaN)", () => {
+    const weights = makeValidWeights();
+    const midIdx = Math.floor(EMBED_DIM / 2);
+    (weights.W_k[midIdx] as any)[5] = null;
+    writeFileSync(join(dir, "acan_weights.json"), JSON.stringify(weights));
+
+    const result = initACAN(dir);
+    expect(result).toBe(false);
+  });
+});
+
+// ── Score stability and performance ──
+
+describe("ACAN score stability and performance", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTmpDir();
+    const weights = makeValidWeights();
+    writeFileSync(join(dir, "acan_weights.json"), JSON.stringify(weights));
+    initACAN(dir);
+  });
+
+  afterEach(() => {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("score stability: 1000 runs with same inputs produce identical results", () => {
+    const query = Array.from({ length: EMBED_DIM }, (_, i) => Math.sin(i * 0.01) * 0.1);
+    const cand = makeCandidate({
+      embedding: Array.from({ length: EMBED_DIM }, (_, i) => Math.cos(i * 0.01) * 0.1),
+    });
+
+    const firstScore = scoreWithACAN(query, [cand])[0];
+    for (let run = 0; run < 1000; run++) {
+      const score = scoreWithACAN(query, [cand])[0];
+      expect(score).toBe(firstScore);
+    }
+  });
+
+  it("score range: random weights and candidates produce finite scores", () => {
+    // Re-init with fresh random weights for each of several trials
+    for (let trial = 0; trial < 10; trial++) {
+      const weights = makeValidWeights();
+      writeFileSync(join(dir, "acan_weights.json"), JSON.stringify(weights));
+      initACAN(dir);
+
+      const query = Array.from({ length: EMBED_DIM }, () => (Math.random() - 0.5) * 0.2);
+      const candidates = Array.from({ length: 20 }, () => makeCandidate());
+
+      const scores = scoreWithACAN(query, candidates);
+      for (const s of scores) {
+        expect(isFinite(s)).toBe(true);
+        // Scores should not explode — with properly scaled weights they stay bounded
+        expect(Math.abs(s)).toBeLessThan(1000);
+      }
+    }
+  });
+
+  it("large batch: 100 candidates scored in < 100ms, all finite", () => {
+    const query = Array.from({ length: EMBED_DIM }, () => Math.random() * 0.1);
+    const candidates = Array.from({ length: 100 }, () => makeCandidate());
+
+    const start = performance.now();
+    const scores = scoreWithACAN(query, candidates);
+    const elapsed = performance.now() - start;
+
+    expect(scores).toHaveLength(100);
+    expect(elapsed).toBeLessThan(100);
+    for (const s of scores) {
+      expect(isFinite(s)).toBe(true);
+    }
+  });
+});
+
 // ── Linear algebra primitives (tested via scoreWithACAN behavior) ──
 
 describe("ACAN linear algebra", () => {
