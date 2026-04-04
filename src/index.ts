@@ -379,22 +379,16 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
-        log.info(`complete() calling pi-ai: provider=${resolvedProvider} model=${modelId} msgLen=${params.messages.length}`);
+        log.info(`complete(): provider=${resolvedProvider} model=${modelId} msgs=${params.messages.length}`);
+        // NOTE: outputFormat (structured output) is intentionally NOT passed to pi-ai.
+        // pi-ai's SimpleStreamOptions doesn't support it, and injecting it via onPayload
+        // causes the Anthropic API to return empty responses. The daemon's JSON parsing
+        // cascade (direct parse → greedy regex → trailing comma fix → field-by-field)
+        // handles free-text JSON extraction reliably without structured output.
         const response = await piAi!.completeSimple(model, context, {
           apiKey: auth.apiKey,
-          // pi-ai doesn't have an outputFormat field — inject it into the raw API
-          // payload via the onPayload hook so the Anthropic provider sends it
-          ...(params.outputFormat && {
-            onPayload: (payload: any) => {
-              if (payload && typeof payload === "object") {
-                // Anthropic API uses output_format for structured output
-                payload.output_format = params.outputFormat;
-              }
-              return payload;
-            },
-          }),
         });
-        log.debug(`complete() returned: ${response.content?.length} blocks, stop=${response.stopReason}`);
+        log.info(`complete(): blocks=${response.content?.length} stop=${response.stopReason}`);
         let text = "";
         let thinking: string | undefined;
         for (const block of response.content) {
