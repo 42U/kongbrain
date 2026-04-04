@@ -962,8 +962,9 @@ export async function graphTransformContext(
   // Done here (wrapper) so it attaches to any inner return path.
   // (claw-code pattern: static sections above __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__)
   let systemPromptSection: string | undefined;
+  let tier0ForSys: CoreMemoryEntry[] = [];
   try {
-    const tier0ForSys = store.isAvailable()
+    tier0ForSys = store.isAvailable()
       ? applyCoreBudget(await store.getAllCoreMemory(0), getTier0BudgetChars(budgets))
       : [];
     systemPromptSection = buildSystemPromptSection(session, tier0ForSys);
@@ -978,7 +979,7 @@ export async function graphTransformContext(
   try {
     const TRANSFORM_TIMEOUT_MS = 10_000;
     const result = await Promise.race([
-      graphTransformInner(messages, session, store, embeddings, contextWindow, budgets, signal, tier0ForSys ?? []),
+      graphTransformInner(messages, session, store, embeddings, contextWindow, budgets, signal, tier0ForSys),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("graphTransformContext timed out")), TRANSFORM_TIMEOUT_MS),
       ),
