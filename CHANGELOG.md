@@ -2,6 +2,27 @@
 
 All notable changes to KongBrain are documented here.
 
+## [0.4.4] - 2026-04-04
+
+### Performance
+- **WMR rebalance**: Cosine-dominant scoring weights, dampen access count feedback loop that was reinforcing already-popular memories.
+- **Tag-boosted concept retrieval**: Surface topically relevant concepts even when embedding similarity alone misses them.
+
+### Bug Fixes
+- **Empty LLM extraction responses**: `outputFormat` injected via pi-ai's `onPayload` hook caused Anthropic API to return 0 content blocks. Removed structured output from pi-ai code path; daemon's JSON parsing cascade handles free-text reliably.
+- **`SELECT WHERE id IN $ids` binding**: Same silent no-op as `bumpAccessCounts` — SurrealDB string arrays don't resolve to record references. Fixed in `getSessionRetrievedMemories` and ACAN `fetchTrainingData`.
+- **ACAN NaN/Infinity validation**: `loadWeights` now rejects corrupted weights (null, NaN, Infinity in bias, W_final, or spot-checked W_q/W_k rows).
+- **Lazy daemon start**: If gateway restarts mid-session, `afterTurn` now starts the daemon on demand instead of silently skipping extraction.
+- **`getOrCreateSession` in afterTurn**: Resumed sessions after gateway restart no longer return null.
+- **Model object unwrapping**: `defaults.model` can be `{primary: "provider/model"}` — unwrap and split provider/model format.
+
+### Infrastructure
+- **CI pipeline**: GitHub Actions with SurrealDB service container, Node 22, 439 tests (unit + integration).
+- **PR checks**: Type checking + unit tests on all pull requests.
+
+### Tests
+- 415 → 439 tests. New: ACAN NaN/Infinity validation (7), score stability/performance (3), `SELECT IN` integration test, additional integration coverage.
+
 ## [0.4.2] - 2026-04-03
 
 ### Performance
