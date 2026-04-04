@@ -153,6 +153,9 @@ DEFINE TABLE IF NOT EXISTS supports TYPE RELATION IN memory OUT memory;
 DEFINE TABLE IF NOT EXISTS contradicts TYPE RELATION IN memory OUT memory;
 DEFINE TABLE IF NOT EXISTS describes TYPE RELATION IN memory OUT memory;
 
+-- Concept evolution
+DEFINE TABLE IF NOT EXISTS supersedes TYPE RELATION IN memory OUT concept;
+
 -- Cross-pillar links
 DEFINE TABLE IF NOT EXISTS about_concept TYPE RELATION IN memory OUT concept;
 DEFINE TABLE IF NOT EXISTS artifact_mentions TYPE RELATION IN artifact OUT concept;

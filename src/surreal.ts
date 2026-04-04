@@ -67,6 +67,8 @@ const VALID_EDGES = new Set([
   "produced", "derived_from", "relevant_to", "used_in", "artifact_mentions",
   // Causal edges
   "caused_by", "supports", "contradicts", "describes",
+  // Evolution edges
+  "supersedes",
   // Session edges
   "part_of",
 ]);
