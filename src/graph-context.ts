@@ -23,10 +23,28 @@ import { getCachedContext, recordPrefetchHit, recordPrefetchMiss } from "./prefe
 import { stageRetrieval, getHistoricalUtilityBatch } from "./retrieval-quality.js";
 import { isACANActive, scoreWithACAN, type ACANCandidate } from "./acan.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 
 // ── Message type guards ────────────────────────────────────────────────────────
 
 type ContentBlock = TextContent | ThinkingContent | ToolCall | ImageContent;
+
+/**
+ * Loose content block type for message stripping — covers the full range of
+ * block shapes that may appear in pi-ai messages beyond the typed union
+ * (e.g., toolResult blocks with nested content, image_url, source).
+ */
+type AnyContentBlock = {
+  type: string;
+  text?: string;
+  thinking?: string;
+  media_type?: string;
+  content?: AnyContentBlock[];
+  [key: string]: unknown;
+};
+
+/** Mutable view of a message for in-place content stripping. */
+type MutableMessage = { role: string; content: AnyContentBlock[] | string };
 
 function isUser(msg: AgentMessage): msg is UserMessage {
   return (msg as UserMessage).role === "user";
@@ -765,9 +783,9 @@ function getRecentTurns(
       recentBoundary = k;
       const msg = clean[k];
       // Each user message or standalone assistant message starts a new group
-      if (isUser(msg) || (isAssistant(msg) && !msg.content.some((c: any) => c.type === "toolCall"))) {
+      if (isUser(msg) || (isAssistant(msg) && !msg.content.some((c: ContentBlock) => c.type === "toolCall"))) {
         groupsSeen++;
-      } else if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
+      } else if (isAssistant(msg) && msg.content.some((c: ContentBlock) => c.type === "toolCall")) {
         groupsSeen++;
         // Skip past associated tool results (they're part of this group)
       }
@@ -776,14 +794,14 @@ function getRecentTurns(
 
   // Apply stripping to messages before the recency boundary
   for (let k = 0; k < recentBoundary; k++) {
-    const msg = clean[k] as any;
+    const msg = clean[k] as MutableMessage;
     if (!msg.content || !Array.isArray(msg.content)) continue;
 
     // Collapse old assistant filler text (agentic loop: "I'll now read..." / "Let me check...")
     // Keep tool calls intact but shrink prose to 1-line summary
-    if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
-      msg.content = msg.content.map((c: any) => {
-        if (c.type === "text" && c.text.length > 120) {
+    if (isAssistant(clean[k]) && msg.content.some((c: AnyContentBlock) => c.type === "toolCall")) {
+      msg.content = msg.content.map((c: AnyContentBlock) => {
+        if (c.type === "text" && c.text && c.text.length > 120) {
           // Keep first line as summary (usually the intent statement)
           const firstLine = c.text.split("\n")[0].slice(0, 120);
           return { ...c, text: firstLine };
@@ -796,7 +814,7 @@ function getRecentTurns(
       continue; // skip generic stripping for this message
     }
 
-    msg.content = msg.content.map((c: any) => {
+    msg.content = msg.content.map((c: AnyContentBlock) => {
       // Strip thinking blocks → [thinking] marker (often 1-5k tokens each)
       if (c.type === "thinking") {
         return { type: "text" as const, text: "[thinking]" };
@@ -807,8 +825,8 @@ function getRecentTurns(
       }
       // Content-clear old tool results → stub (claw-code: microcompact pattern)
       if (c.type === "toolResult" && Array.isArray(c.content)) {
-        const stub = c.content.map((rc: any) => {
-          if (rc.type === "text" && rc.text.length > 200) {
+        const stub = c.content.map((rc: AnyContentBlock) => {
+          if (rc.type === "text" && rc.text && rc.text.length > 200) {
             return { ...rc, text: `[Old tool result cleared — ${rc.text.length} chars]` };
           }
           if (rc.type === "image" || rc.type === "image_url") {
@@ -819,7 +837,7 @@ function getRecentTurns(
         return { ...c, content: stub };
       }
       // For tool result messages (top-level), clear oversized text blocks
-      if (c.type === "text" && isToolResult(msg) && c.text.length > 200) {
+      if (c.type === "text" && isToolResult(clean[k]) && c.text && c.text.length > 200) {
         return { ...c, text: `[Old tool result cleared — ${c.text.length} chars]` };
       }
       return c;
@@ -831,7 +849,7 @@ function getRecentTurns(
   let i = 0;
   while (i < clean.length) {
     const msg = clean[i];
-    if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
+    if (isAssistant(msg) && msg.content.some((c: ContentBlock) => c.type === "toolCall")) {
       const group: AgentMessage[] = [clean[i]];
       let j = i + 1;
       while (j < clean.length && isToolResult(clean[j])) {
@@ -968,7 +986,7 @@ export async function graphTransformContext(
     result.systemPromptSection = systemPromptSection;
     return result;
   } catch (err) {
-    console.error("graphTransformContext fatal error, returning raw messages:", err);
+    log.error("graphTransformContext fatal error, returning raw messages:", err);
     return {
       messages,
       stats: {
@@ -1041,7 +1059,7 @@ async function graphTransformInner(
       tier0 = applyCoreBudget(tier0, getTier0BudgetChars(budgets));
       tier1 = applyCoreBudget(tier1, getTier1BudgetChars(budgets));
     } catch (e) {
-      console.warn("[warn] Core memory load failed:", e);
+      log.warn("Core memory load failed:", e);
     }
     if (tier0.length > 0 || tier1.length > 0) {
       const coreContext = await formatContextMessage([], store, session, "", tier0, tier1);
@@ -1061,7 +1079,7 @@ async function graphTransformInner(
       : applyCoreBudget(await store.getAllCoreMemory(0), getTier0BudgetChars(budgets));
     tier1 = applyCoreBudget(await store.getAllCoreMemory(1), getTier1BudgetChars(budgets));
   } catch (e) {
-    console.warn("[warn] Core memory load failed:", e);
+    swallow.warn("graph-context:coreMemoryLoad", e);
   }
 
   // Graceful degradation
@@ -1220,7 +1238,7 @@ async function graphTransformInner(
       ),
     };
   } catch (err) {
-    console.error("Graph context error, falling back:", err);
+    log.error("Graph context error, falling back:", err);
     const result = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
     return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, result.length, "recency-only") };
   }

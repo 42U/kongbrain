@@ -176,26 +176,22 @@ export class KongBrainContextEngine implements ContextEngine {
     if (systemPromptSection) additions.push(systemPromptSection);
 
     // Compaction summary (claw-code: compact.rs structured signals — inject once after compaction)
-    const compactionSummary = (session as any)._compactionSummary as string | undefined;
+    const compactionSummary = session._compactionSummary;
     if (compactionSummary) {
       additions.push("[POST-COMPACTION CONTEXT]\n" + compactionSummary);
-      delete (session as any)._compactionSummary;
+      session._compactionSummary = undefined;
     }
 
     // Wakeup briefing (synthesized at session start, may still be in-flight)
-    const wakeupPromise = (session as any)._wakeupPromise as Promise<string | null> | undefined;
+    const wakeupPromise = session._wakeupPromise;
     if (wakeupPromise) {
       const wakeupBriefing = await wakeupPromise;
-      delete (session as any)._wakeupPromise; // Only inject once
+      session._wakeupPromise = undefined; // Only inject once
       if (wakeupBriefing) additions.push(wakeupBriefing);
     }
 
     // Graduation celebration — tell the agent it just graduated so it can share with the user
-    const graduation = (session as any)._graduationCelebration as {
-      qualityScore: number;
-      volumeScore: number;
-      soulSummary: string;
-    } | undefined;
+    const graduation = session._graduationCelebration;
     if (graduation) {
       let graduationBlock =
         "[SOUL GRADUATION — CELEBRATE WITH THE USER]\n" +
@@ -214,11 +210,11 @@ export class KongBrainContextEngine implements ContextEngine {
         "identity emerging from YOUR experience. Don't be robotic about it. This only happens once.";
 
       additions.push(graduationBlock);
-      delete (session as any)._graduationCelebration; // Only inject once
+      session._graduationCelebration = undefined; // Only inject once
     }
 
     // Migration nudge — tell the agent there are workspace files to offer migrating
-    if ((session as any)._hasMigratableFiles) {
+    if (session._hasMigratableFiles) {
       additions.push(
         "[MIGRATION AVAILABLE] This workspace has files from the default context engine " +
         "(IDENTITY.md, MEMORY.md, skills/, etc.). You can offer to migrate them into the graph " +
@@ -266,7 +262,7 @@ export class KongBrainContextEngine implements ContextEngine {
     const msg = params.message;
 
     try {
-      const role = (msg as any).role as string;
+      const role = "role" in msg ? (msg as { role: string }).role : "";
       if (role === "user" || role === "assistant") {
         const text = extractMessageText(msg);
         if (!text) return { ingested: false };
@@ -417,7 +413,7 @@ export class KongBrainContextEngine implements ContextEngine {
             summary = parts.join("\n");
             // Stash for next assemble() to inject
             if (session) {
-              (session as any)._compactionSummary = summary;
+              session._compactionSummary = summary;
             }
           }
         }
@@ -513,7 +509,7 @@ export class KongBrainContextEngine implements ContextEngine {
         const turnData = recentTurns.map(t => ({
           role: t.role as "user" | "assistant",
           text: t.text,
-          turnId: String((t as any).id ?? ""),
+          turnId: String((t as { id?: string }).id ?? ""),
         }));
 
         // Gather retrieved memory IDs for dedup
@@ -551,7 +547,7 @@ export class KongBrainContextEngine implements ContextEngine {
         const turnData = allSessionTurns.map(t => ({
           role: t.role as "user" | "assistant",
           text: t.text,
-          turnId: String((t as any).id ?? ""),
+          turnId: String((t as { id?: string }).id ?? ""),
         }));
         session.daemon.sendTurnBatch(turnData, [...session.pendingThinking], []);
       }
@@ -672,12 +668,12 @@ export class KongBrainContextEngine implements ContextEngine {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function extractMessageText(msg: AgentMessage): string {
-  const m = msg as any;
+  const m = msg as { content?: string | { type: string; text?: string }[] };
   if (typeof m.content === "string") return m.content;
   if (Array.isArray(m.content)) {
     return m.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text ?? "")
+      .filter((c) => c.type === "text")
+      .map((c) => c.text ?? "")
       .join("\n");
   }
   return "";

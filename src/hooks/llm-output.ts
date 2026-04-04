@@ -103,7 +103,7 @@ export function createLlmOutputHandler(state: GlobalPluginState) {
     }
 
     // Capture thinking blocks for monologue extraction
-    const lastAssistant = event.lastAssistant as any;
+    const lastAssistant = event.lastAssistant as { content?: { type: string; thinking?: string; text?: string }[] } | undefined;
     if (lastAssistant?.content && Array.isArray(lastAssistant.content)) {
       for (const block of lastAssistant.content) {
         if (block.type === "thinking") {

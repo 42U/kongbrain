@@ -215,7 +215,7 @@ async function verifyAction(store: any, recordId?: string) {
 
   const record = rows[0];
   const cleaned: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(record as any)) {
+  for (const [key, val] of Object.entries(record as Record<string, unknown>)) {
     if (Array.isArray(val) && val.length > 100 && typeof val[0] === "number") {
       cleaned[key] = `[${val.length} dims]`;
     } else {

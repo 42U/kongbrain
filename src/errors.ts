@@ -9,6 +9,8 @@
  *                           Always logged to stderr with stack trace.
  */
 
+import { log } from "./log.js";
+
 const DEBUG = process.env.KONGBRAIN_DEBUG === "1";
 
 /**
@@ -18,7 +20,7 @@ const DEBUG = process.env.KONGBRAIN_DEBUG === "1";
 function swallow(context: string, err?: unknown): void {
   if (!DEBUG) return;
   const msg = err instanceof Error ? err.message : String(err ?? "unknown");
-  console.debug(`[swallow] ${context}: ${msg}`);
+  log.debug(`[swallow] ${context}: ${msg}`);
 }
 
 /**
@@ -27,7 +29,7 @@ function swallow(context: string, err?: unknown): void {
  */
 swallow.warn = function swallowWarn(context: string, err?: unknown): void {
   const msg = err instanceof Error ? err.message : String(err ?? "unknown");
-  console.warn(`[warn] ${context}: ${msg}`);
+  log.warn(`${context}: ${msg}`);
 };
 
 /**
@@ -37,7 +39,7 @@ swallow.warn = function swallowWarn(context: string, err?: unknown): void {
 swallow.error = function swallowError(context: string, err?: unknown): void {
   const msg = err instanceof Error ? err.message : String(err ?? "unknown");
   const stack = err instanceof Error ? `\n${err.stack}` : "";
-  console.error(`[ERROR] ${context}: ${msg}${stack}`);
+  log.error(`${context}: ${msg}${stack}`);
 };
 
 export { swallow };

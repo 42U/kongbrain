@@ -14,10 +14,12 @@ import type { CompleteFn } from "./state.js";
 import { buildSystemPrompt, buildTranscript, writeExtractionResults } from "./memory-daemon.js";
 import type { PriorExtractions } from "./daemon-types.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 
 // Process-global flag — deferred cleanup runs AT MOST ONCE per process.
 // Using Symbol.for so it survives Jiti re-importing this module.
 const RAN_KEY = Symbol.for("kongbrain.deferredCleanup.ran");
+const _g = globalThis as Record<symbol, unknown>;
 
 /**
  * Find and process orphaned sessions. Runs with a 30s total timeout.
@@ -30,8 +32,8 @@ export async function runDeferredCleanup(
   complete: CompleteFn,
 ): Promise<number> {
   // Once per process — never re-run even if first run times out
-  if ((globalThis as any)[RAN_KEY]) return 0;
-  (globalThis as any)[RAN_KEY] = true;
+  if (_g[RAN_KEY]) return 0;
+  _g[RAN_KEY] = true;
 
   try {
     return await runDeferredCleanupInner(store, embeddings, complete);
@@ -101,7 +103,7 @@ async function processOrphanedSession(
   const systemPrompt = buildSystemPrompt(false, false, priorState);
 
   try {
-    console.warn(`[deferred] extracting session ${surrealSessionId} (${turns.length} turns, transcript ${transcript.length} chars)`);
+    log.info(`[deferred] extracting session ${surrealSessionId} (${turns.length} turns, transcript ${transcript.length} chars)`);
     const LLM_CALL_TIMEOUT_MS = 30_000;
     const response = await Promise.race([
       complete({
@@ -114,7 +116,7 @@ async function processOrphanedSession(
     ]);
 
     const responseText = response.text;
-    console.warn(`[deferred] extraction response: ${responseText.length} chars`);
+    log.info(`[deferred] extraction response: ${responseText.length} chars`);
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       let result: Record<string, any>;
@@ -128,17 +130,17 @@ async function processOrphanedSession(
       // Strip prototype pollution keys from LLM-generated JSON
       const BANNED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
       for (const key of Object.keys(result)) {
-        if (BANNED_KEYS.has(key)) delete (result as any)[key];
+        if (BANNED_KEYS.has(key)) delete result[key];
       }
 
       const keys = Object.keys(result);
-      console.warn(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);
+      log.info(`[deferred] parsed ${keys.length} keys: ${keys.join(", ")}`);
       if (keys.length > 0) {
         await writeExtractionResults(result, surrealSessionId, store, embeddings, priorState, undefined, undefined, turnData);
-        console.warn(`[deferred] wrote extraction results for ${surrealSessionId}`);
+        log.info(`[deferred] wrote extraction results for ${surrealSessionId}`);
       }
     } else {
-      console.warn(`[deferred] no JSON found in response`);
+      log.warn(`[deferred] no JSON found in response`);
     }
   } catch (e) {
     swallow.warn("deferredCleanup:extraction", e);
@@ -162,7 +164,7 @@ async function processOrphanedSession(
     ]);
 
     const handoffText = handoffResponse.text.trim();
-    console.warn(`[deferred] handoff response: ${handoffText.length} chars`);
+    log.info(`[deferred] handoff response: ${handoffText.length} chars`);
     if (handoffText.length > 20) {
       let emb: number[] | null = null;
       if (embeddings.isAvailable()) {

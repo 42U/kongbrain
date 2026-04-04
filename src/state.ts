@@ -103,6 +103,20 @@ export class SessionState {
   taskId = "";
   surrealSessionId = "";
 
+  // Cross-concern state (set by index.ts hooks, consumed by context-engine.ts assemble)
+  /** Structured summary stashed after compaction for next assemble() injection. */
+  _compactionSummary?: string;
+  /** Promise resolving to wakeup briefing text (synthesized at session start). */
+  _wakeupPromise?: Promise<string | null>;
+  /** Graduation celebration payload for context injection. */
+  _graduationCelebration?: {
+    qualityScore: number;
+    volumeScore: number;
+    soulSummary: string;
+  };
+  /** Whether workspace has files from the default context engine that can be migrated. */
+  _hasMigratableFiles?: boolean;
+
   constructor(sessionId: string, sessionKey: string) {
     this.sessionId = sessionId;
     this.sessionKey = sessionKey;
@@ -172,6 +186,11 @@ export class GlobalPluginState {
   /** Remove a session from the map (after dispose/cleanup). */
   removeSession(sessionKey: string): void {
     this.sessions.delete(sessionKey);
+  }
+
+  /** Return all active sessions (for exit handlers). */
+  allSessions(): SessionState[] {
+    return [...this.sessions.values()];
   }
 
   /** Shut down all shared resources. */

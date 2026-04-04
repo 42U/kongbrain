@@ -33,6 +33,7 @@ import { hasMigratableFiles, migrateWorkspace } from "./workspace-migrate.js";
 import { writeHandoffFileSync } from "./handoff-file.js";
 import { runDeferredCleanup } from "./deferred-cleanup.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 
 // Use process-global symbols so state survives Jiti re-importing the module.
 // Jiti may load this file multiple times (fresh module scope each time),
@@ -40,17 +41,20 @@ import { swallow } from "./errors.js";
 const GLOBAL_KEY = Symbol.for("kongbrain.globalState");
 const REGISTERED_KEY = Symbol.for("kongbrain.registered");
 
+// Typed accessor for process-global symbol keys on globalThis
+const _g = globalThis as Record<symbol, unknown>;
+
 function getGlobalState(): GlobalPluginState | null {
-  return (globalThis as any)[GLOBAL_KEY] ?? null;
+  return (_g[GLOBAL_KEY] as GlobalPluginState) ?? null;
 }
 function setGlobalState(state: GlobalPluginState): void {
-  (globalThis as any)[GLOBAL_KEY] = state;
+  _g[GLOBAL_KEY] = state;
 }
 function isRegistered(): boolean {
-  return (globalThis as any)[REGISTERED_KEY] === true;
+  return _g[REGISTERED_KEY] === true;
 }
 function markRegistered(): void {
-  (globalThis as any)[REGISTERED_KEY] = true;
+  _g[REGISTERED_KEY] = true;
 }
 
 let shutdownPromise: Promise<void> | null = null;
@@ -107,7 +111,7 @@ async function runSessionCleanup(
           const turnData = recentTurns.map(t => ({
             role: t.role as "user" | "assistant",
             text: t.text,
-            turnId: (t as any).id,
+            turnId: (t as { id?: string }).id,
           }));
           session.daemon!.sendTurnBatch(turnData, [...session.pendingThinking], []);
         } catch (e) { swallow.warn("cleanup:finalDaemonFlush", e); }
@@ -278,7 +282,7 @@ async function detectGraduationEvent(
   }
 
   // Flag the session for context engine injection
-  (session as any)._graduationCelebration = {
+  session._graduationCelebration = {
     qualityScore: event.quality_score,
     volumeScore: event.volume_score,
     soulSummary,
@@ -373,7 +377,7 @@ export default definePluginEntry({
         let thinking: string | undefined;
         for (const block of response.content) {
           if (block.type === "text") text += block.text;
-          else if ((block as any).type === "thinking") thinking = (thinking ?? "") + (block as any).thinking;
+          else if ((block as { type: string; thinking?: string }).type === "thinking") thinking = (thinking ?? "") + (block as { type: string; thinking?: string }).thinking;
         }
         return { text, thinking, usage: { input: response.usage.input, output: response.usage.output } };
       };
@@ -479,7 +483,7 @@ export default definePluginEntry({
         hasMigratableFiles(globalState!.workspaceDir)
           .then(hasMigratable => {
             if (hasMigratable) {
-              (session as any)._hasMigratableFiles = true;
+              session._hasMigratableFiles = true;
             }
           })
           .catch(e => swallow.warn("index:migrationCheck", e));
@@ -493,7 +497,7 @@ export default definePluginEntry({
         .catch(e => swallow("index:graduationDetect", e));
 
       // Synthesize wakeup briefing — store the promise so assemble() can await it
-      (session as any)._wakeupPromise = synthesizeWakeup(
+      session._wakeupPromise = synthesizeWakeup(
         globalState!.store, globalState!.complete, session.sessionId, globalState!.workspaceDir,
       ).catch(e => { swallow.warn("index:wakeup", e); return null; });
 
@@ -542,7 +546,7 @@ export default definePluginEntry({
     const syncExitHandler = () => {
       const gs = getGlobalState();
       if (!gs?.workspaceDir) return;
-      const sessions = [...(gs as any).sessions.values()] as import("./state.js").SessionState[];
+      const sessions = gs.allSessions();
       for (const session of sessions) {
         if (session.cleanedUp) continue;
         writeHandoffFileSync({
@@ -560,14 +564,14 @@ export default definePluginEntry({
     const asyncExitHandler = () => {
       const gs = getGlobalState();
       if (!gs) return;
-      const sessions = [...(gs as any).sessions.values()] as import("./state.js").SessionState[];
+      const sessions = gs.allSessions();
       if (sessions.length === 0 && !shutdownPromise) return;
 
       const cleanups = sessions.map(s => runSessionCleanup(s, gs));
       if (shutdownPromise) cleanups.push(shutdownPromise);
 
       const done = Promise.allSettled(cleanups).then(() => {
-        gs.shutdown().catch(e => console.error("[kongbrain] shutdown error:", e));
+        gs.shutdown().catch(e => log.error("shutdown error:", e));
       });
 
       done.then(() => process.exit(0)).catch(() => process.exit(1));

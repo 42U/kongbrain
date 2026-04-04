@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { EmbeddingConfig } from "./config.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 
 // Lazy-import node-llama-cpp to avoid top-level await issues with jiti.
 // The actual import happens inside initialize() at runtime.
@@ -31,8 +32,8 @@ export class EmbeddingService {
       logLevel: LlamaLogLevel.error,
       logger: (level, message) => {
         if (message.includes("missing newline token")) return;
-        if (level === LlamaLogLevel.error) console.error(`[llama] ${message}`);
-        else if (level === LlamaLogLevel.warn) console.warn(`[llama] ${message}`);
+        if (level === LlamaLogLevel.error) log.error(`[llama] ${message}`);
+        else if (level === LlamaLogLevel.warn) log.warn(`[llama] ${message}`);
       },
     });
     this.model = await llama.loadModel({ modelPath: this.config.modelPath });

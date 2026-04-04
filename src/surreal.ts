@@ -1,6 +1,7 @@
 import { Surreal } from "surrealdb";
 import type { SurrealConfig } from "./config.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 import { loadSchema } from "./schema-loader.js";
 
 /** Record with a vector similarity score from SurrealDB search */
@@ -159,8 +160,8 @@ export class SurrealStore {
       const BACKOFF_MS = [500, 1500, 4000];
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
-          console.warn(
-            `[warn] SurrealDB disconnected — reconnecting (attempt ${attempt}/${MAX_ATTEMPTS})...`,
+          log.warn(
+            `SurrealDB disconnected — reconnecting (attempt ${attempt}/${MAX_ATTEMPTS})...`,
           );
           this.db = new Surreal();
           const CONNECT_TIMEOUT_MS = 5_000;
@@ -177,13 +178,13 @@ export class SurrealStore {
               ),
             ),
           ]);
-          console.warn("[warn] SurrealDB reconnected successfully.");
+          log.warn("SurrealDB reconnected successfully.");
           return;
         } catch (e) {
           if (attempt < MAX_ATTEMPTS) {
             await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1]));
           } else {
-            console.error(`[ERROR] SurrealDB reconnection failed after ${MAX_ATTEMPTS} attempts.`);
+            log.error(`SurrealDB reconnection failed after ${MAX_ATTEMPTS} attempts.`);
             throw new Error("SurrealDB reconnection failed");
           }
         }
@@ -238,7 +239,7 @@ export class SurrealStore {
 
   /** Returns true if an error is a connection-level failure worth retrying. */
   private isConnectionError(e: unknown): boolean {
-    const msg = String((e as any)?.message ?? e);
+    const msg = String((e as { message?: string })?.message ?? e);
     return msg.includes("must be connected") || msg.includes("ConnectionUnavailable");
   }
 
@@ -1450,7 +1451,7 @@ export class SurrealStore {
     const current = await this.queryFirst<{ fib_index: number }>(
       `SELECT fib_index FROM $id`, { id: memoryId },
     );
-    const idx = (current as any)?.[0]?.fib_index ?? 0;
+    const idx = (current as { fib_index: number }[] | undefined)?.[0]?.fib_index ?? 0;
     const nextIdx = Math.min(idx + 1, SurrealStore.FIB_DAYS.length - 1);
     const days = nextIdx < SurrealStore.FIB_DAYS.length
       ? SurrealStore.FIB_DAYS[nextIdx]
