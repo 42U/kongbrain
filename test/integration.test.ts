@@ -30,12 +30,18 @@ beforeAll(async () => {
     db: TEST_DB,
   });
   try {
-    await store.initialize();
+    // Timeout the connection attempt — WebSocket connect can hang indefinitely
+    await Promise.race([
+      store.initialize(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("SurrealDB connection timed out after 10s")), 10_000),
+      ),
+    ]);
   } catch (e) {
     console.warn("SurrealDB not available, skipping integration tests:", (e as Error).message);
     store = undefined as any;
   }
-}, 30_000);
+}, 15_000);
 
 afterAll(async () => {
   if (!store) return;

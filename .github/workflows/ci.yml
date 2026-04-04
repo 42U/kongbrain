@@ -39,6 +39,11 @@ jobs:
       - name: Run unit tests
         run: npx vitest run --exclude test/integration.test.ts
 
+      - name: Verify SurrealDB is running
+        run: |
+          docker logs surrealdb 2>&1 | tail -20
+          curl -sf http://localhost:8000/health && echo "Health OK" || echo "Health FAILED"
+
       - name: Run integration tests
         run: npx vitest run test/integration.test.ts
         env:
