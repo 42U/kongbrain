@@ -36,7 +36,7 @@ export function startMemoryDaemon(
   sharedEmbeddings: EmbeddingService,
   sessionId: string,
   complete: CompleteFn,
-  extractionTimeoutMs = 60_000,
+  extractionTimeoutMs = 120_000,
   taskId?: string,
   projectId?: string,
 ): MemoryDaemon {
@@ -115,15 +115,25 @@ export function startMemoryDaemon(
       outputFormat: { type: "json_schema", schema: extractionSchema },
     });
 
-    const responseText = response.text;
+    let responseText = response.text;
+
+    // Sanitize: strip BOM, markdown fences, and trim
+    responseText = responseText.replace(/^\uFEFF/, "").trim();
+    const fenceMatch = responseText.match(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/);
+    if (fenceMatch) responseText = fenceMatch[1].trim();
 
     // With structured output the response should be valid JSON directly.
     // Fall back to regex extraction if the provider doesn't support outputFormat.
     let result: Record<string, any>;
     try {
       result = JSON.parse(responseText);
-    } catch {
-      const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+    } catch (parseErr) {
+      swallow.warn("daemon:parseDebug", new Error(
+        `JSON.parse failed: ${(parseErr as Error).message}; ` +
+        `len=${responseText.length}; first100=${JSON.stringify(responseText.slice(0, 100))}; ` +
+        `last100=${JSON.stringify(responseText.slice(-100))}`
+      ));
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         swallow.warn("daemon:noJson", new Error(`LLM response contained no JSON (${responseText.length} chars)`));
         return;
@@ -131,21 +141,28 @@ export function startMemoryDaemon(
       try {
         result = JSON.parse(jsonMatch[0]);
       } catch {
+        // Try fixing trailing commas
         try {
           result = JSON.parse(jsonMatch[0].replace(/,\s*([}\]])/g, "$1"));
         } catch {
-          result = {};
-          const fields = ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"];
-          for (const field of fields) {
-            const fieldMatch = jsonMatch[0].match(new RegExp(`"${field}"\\s*:\\s*(\\[[\\s\\S]*?\\])(?=\\s*[,}]\\s*"[a-z]|\\s*\\}$)`, "m"));
-            if (fieldMatch) {
-              try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
+          // Try stripping control characters
+          try {
+            const cleaned = jsonMatch[0].replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+            result = JSON.parse(cleaned);
+          } catch {
+            result = {};
+            const fields = ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"];
+            for (const field of fields) {
+              const fieldMatch = jsonMatch[0].match(new RegExp(`"${field}"\\s*:\\s*(\\[[\\s\\S]*?\\])(?=\\s*[,}]\\s*"[a-z]|\\s*\\}$)`, "m"));
+              if (fieldMatch) {
+                try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
+              }
             }
-          }
-          const PRIMARY_FIELDS = ["causal", "monologue", "artifacts"];
-          if (!PRIMARY_FIELDS.some(f => f in result)) {
-            swallow.warn("daemon:fallbackFailed", new Error(`Regex fallback extracted no primary fields from: ${jsonMatch[0].slice(0, 100)}`));
-            return;
+            const PRIMARY_FIELDS = ["causal", "monologue", "artifacts"];
+            if (!PRIMARY_FIELDS.some(f => f in result)) {
+              swallow.warn("daemon:fallbackFailed", new Error(`Regex fallback extracted no primary fields from: ${jsonMatch[0].slice(0, 100)}`));
+              return;
+            }
           }
         }
       }

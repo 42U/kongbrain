@@ -50,6 +50,7 @@ import { generateReflection } from "./reflection.js";
 import { graduateCausalToSkills } from "./skills.js";
 import { attemptGraduation, evolveSoul, checkStageTransition } from "./soul.js";
 import { swallow } from "./errors.js";
+import { log } from "./log.js";
 
 /** OpenClaw ContextEngine backed by SurrealDB graph retrieval and BGE-M3 embeddings. */
 export class KongBrainContextEngine implements ContextEngine {
@@ -449,10 +450,30 @@ export class KongBrainContextEngine implements ContextEngine {
     prePromptMessageCount: number;
   }): Promise<void> {
     const sessionKey = params.sessionKey ?? params.sessionId;
-    const session = this.state.getSession(sessionKey);
-    if (!session) return;
+    log.debug(`afterTurn: session=${sessionKey} messages=${params.messages.length}`);
+    // Use getOrCreateSession so resumed sessions (where session_start
+    // didn't fire after a gateway restart) still get a session object.
+    const session = this.state.getOrCreateSession(sessionKey, params.sessionId);
 
     const { store, embeddings } = this.state;
+
+    // Lazy daemon start: if session was resumed after gateway restart,
+    // session_start won't re-fire, so the daemon never started.
+    if (!session.daemon && typeof this.state.complete === "function") {
+      try {
+        session.daemon = startMemoryDaemon(
+          store,
+          embeddings,
+          session.sessionId,
+          this.state.complete,
+          this.state.config.thresholds.extractionTimeoutMs,
+          session.taskId,
+          session.projectId,
+        );
+      } catch (e) {
+        swallow.warn("afterTurn:lazyDaemonStart", e);
+      }
+    }
 
     // Deferred cleanup: run once on first turn when complete() is available
     if (session.userTurnCount <= 1 && typeof this.state.complete === "function") {
@@ -503,6 +524,7 @@ export class KongBrainContextEngine implements ContextEngine {
     // Flush to daemon when token threshold OR turn count threshold is reached
     const tokenReady = session.newContentTokens >= session.daemonTokenThreshold;
     const turnReady = session.userTurnCount >= session.lastDaemonFlushTurnCount + 3;
+    log.debug(`flush check: daemon=${!!session.daemon} tokenReady=${tokenReady} turnReady=${turnReady} turns=${session.userTurnCount}`);
     if (session.daemon && (tokenReady || turnReady)) {
       try {
         const recentTurns = allSessionTurns.slice(-20);

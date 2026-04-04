@@ -90,8 +90,8 @@ const CORE_MEMORY_SHARE = 0.155;     // ~10k for core memory/directives
 const TOOL_HISTORY_SHARE = 0.23;     // ~15k for recent tool results
 const CORE_MEMORY_TTL = 300_000;
 const MAX_ITEM_CHARS = 1200; // ~350 tokens per item (matches claw-code MAX_INSTRUCTION_FILE_CHARS)
-const MIN_RELEVANCE_SCORE = 0.35; // Floor for graph-scored results after WMR/ACAN
-const MIN_COSINE = 0.25; // Minimum cosine similarity to consider a result
+const MIN_RELEVANCE_SCORE = 0.40; // Floor for graph-scored results after WMR/ACAN (tuned: cosine-heavy weights produce lower absolute scores)
+const MIN_COSINE = 0.35; // Minimum cosine similarity to consider a result (raised from 0.25)
 
 // Deduplication thresholds
 const DEDUP_COSINE_THRESHOLD = 0.88;
@@ -417,8 +417,8 @@ async function scoreResults(
       const reflectionBoost = r.sessionId ? (reflectedSessions.has(r.sessionId) ? 1.0 : 0) : 0;
 
       const finalScore =
-        0.27 * cosine + 0.28 * recency + 0.05 * importance +
-        0.05 * access + 0.10 * neighborBonus + 0.15 * provenUtility +
+        0.35 * cosine + 0.18 * recency + 0.07 * importance +
+        0.02 * access + 0.10 * neighborBonus + 0.18 * provenUtility +
         0.10 * reflectionBoost - utilityPenalty;
 
       return { ...r, finalScore, fromNeighbor: neighborIds.has(r.id) };
@@ -1104,7 +1104,7 @@ async function graphTransformInner(
 
   const currentIntent = config?.intent ?? "unknown";
   const baseLimits = config?.vectorSearchLimits ?? {
-    turn: 25, identity: 10, concept: 20, memory: 20, artifact: 10,
+    turn: 25, identity: 10, concept: 35, memory: 20, artifact: 10,
   };
   // Scale search limits with context window — larger windows can use more results
   const cwScale = Math.max(0.5, Math.min(2.0, contextWindow / 200_000));
@@ -1151,9 +1151,16 @@ async function graphTransformInner(
       }
     }
 
-    // Vector search (cache miss path)
+    // Vector search + tag-boosted retrieval (cache miss path, run in parallel)
     recordPrefetchMiss();
-    const results = await store.vectorSearch(queryVec, session.sessionId, vectorSearchLimits, isACANActive());
+    const [vectorResults, tagResults] = await Promise.all([
+      store.vectorSearch(queryVec, session.sessionId, vectorSearchLimits, isACANActive()),
+      store.tagBoostedConcepts(queryText, queryVec, 10).catch(e => { swallow.warn("graph-context:tagBoost", e); return [] as VectorSearchResult[]; }),
+    ]);
+    // Merge: dedupe tag results against vector results, then combine
+    const vectorIds = new Set(vectorResults.map(r => r.id));
+    const uniqueTagResults = tagResults.filter(r => !vectorIds.has(r.id));
+    const results = [...vectorResults, ...uniqueTagResults];
 
     // Graph neighbor expansion
     const topIds = results

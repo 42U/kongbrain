@@ -104,7 +104,7 @@ async function processOrphanedSession(
 
   try {
     log.info(`[deferred] extracting session ${surrealSessionId} (${turns.length} turns, transcript ${transcript.length} chars)`);
-    const LLM_CALL_TIMEOUT_MS = 30_000;
+    const LLM_CALL_TIMEOUT_MS = 120_000;
     const response = await Promise.race([
       complete({
         system: systemPrompt,
