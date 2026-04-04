@@ -10,20 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    services:
-      surrealdb:
-        image: surrealdb/surrealdb:latest
-        ports:
-          - 8000:8000
-        options: >-
-          --health-cmd "curl -sf http://localhost:8000/health || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-        env:
-          SURREAL_USER: root
-          SURREAL_PASS: root
-
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +18,17 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      - name: Start SurrealDB
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 \
+            surrealdb/surrealdb:latest start \
+            --user root --pass root --bind 0.0.0.0:8000 memory
+          # Wait for it to be ready
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break || sleep 1
+          done
+
+      - run: npm install --ignore-scripts --legacy-peer-deps
 
       - name: Run unit tests
         run: npx vitest run --exclude test/integration.test.ts

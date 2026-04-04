@@ -11,6 +11,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm install --ignore-scripts --legacy-peer-deps
       - run: npx tsc --noEmit || true  # Type check (peer deps may be missing)
       - run: npx vitest run --exclude test/integration.test.ts
