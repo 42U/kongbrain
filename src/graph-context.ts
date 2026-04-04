@@ -1151,9 +1151,16 @@ async function graphTransformInner(
       }
     }
 
-    // Vector search (cache miss path)
+    // Vector search + tag-boosted retrieval (cache miss path, run in parallel)
     recordPrefetchMiss();
-    const results = await store.vectorSearch(queryVec, session.sessionId, vectorSearchLimits, isACANActive());
+    const [vectorResults, tagResults] = await Promise.all([
+      store.vectorSearch(queryVec, session.sessionId, vectorSearchLimits, isACANActive()),
+      store.tagBoostedConcepts(queryText, queryVec, 10).catch(e => { swallow.warn("graph-context:tagBoost", e); return [] as VectorSearchResult[]; }),
+    ]);
+    // Merge: dedupe tag results against vector results, then combine
+    const vectorIds = new Set(vectorResults.map(r => r.id));
+    const uniqueTagResults = tagResults.filter(r => !vectorIds.has(r.id));
+    const results = [...vectorResults, ...uniqueTagResults];
 
     // Graph neighbor expansion
     const topIds = results

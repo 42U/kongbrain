@@ -594,6 +594,44 @@ export class SurrealStore {
    * BFS expansion from seed nodes along typed edges, with batched per-hop queries.
    * Each edge query is LIMIT 3 (EDGE_NEIGHBOR_LIMIT) to bound fan-out per node.
    */
+  /**
+   * Tag-boosted concept retrieval: extract keywords from query text,
+   * find concepts tagged with matching terms, score by cosine similarity.
+   * Returns concepts that pure vector search might miss due to embedding mismatch.
+   */
+  async tagBoostedConcepts(
+    queryText: string,
+    queryVec: number[],
+    limit = 10,
+  ): Promise<VectorSearchResult[]> {
+    // Extract candidate tags from query — lowercase, deduplicate
+    const stopwords = new Set(["the","a","an","is","are","was","were","be","been","being","have","has","had","do","does","did","will","would","could","should","may","might","can","shall","to","of","in","for","on","with","at","by","from","as","into","about","between","through","during","it","its","this","that","these","those","i","you","we","they","my","your","our","their","what","which","who","how","when","where","why","not","no","and","or","but","if","so","any","all","some","more","just","also","than","very","too","much","many"]);
+    const words = queryText.toLowerCase().replace(/[^a-z0-9\s-]/g, "").split(/\s+/)
+      .filter(w => w.length > 2 && !stopwords.has(w));
+    if (words.length === 0) return [];
+
+    // Build tag match condition — match any tag that contains a query word
+    const tagConditions = words.slice(0, 8).map(w => `tags CONTAINS '${w.replace(/'/g, "")}'`).join(" OR ");
+
+    try {
+      const rows = await this.queryFirst<any>(
+        `SELECT id, content AS text, stability AS importance, access_count AS accessCount,
+                created_at AS timestamp, 'concept' AS table,
+                vector::similarity::cosine(embedding, $vec) AS score
+         FROM concept
+         WHERE embedding != NONE AND array::len(embedding) > 0
+           AND (${tagConditions})
+         ORDER BY score DESC
+         LIMIT $limit`,
+        { vec: queryVec, limit },
+      );
+      return rows as VectorSearchResult[];
+    } catch (e) {
+      swallow.warn("surreal:tagBoostedConcepts", e);
+      return [];
+    }
+  }
+
   async graphExpand(
     nodeIds: string[],
     queryVec: number[],
