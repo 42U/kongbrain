@@ -1,7 +1,7 @@
 ---
 name: kongbrain
 description: Graph-backed persistent memory engine for OpenClaw. Replaces the default context window with SurrealDB + vector embeddings that learn across sessions.
-version: 0.4.3
+version: 0.4.4
 homepage: https://github.com/42U/kongbrain
 metadata:
   openclaw:
