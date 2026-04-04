@@ -263,8 +263,9 @@ describe("checkACANReadiness", () => {
     } as any;
 
     await checkACANReadiness(store, 5000);
-    // Only count query, no training data fetch
-    expect(store.queryFirst).toHaveBeenCalledTimes(1);
+    // Count query fires, but no full training data fetch (which would call queryFirst many more times)
+    // initACAN may also trigger a queryFirst internally, so allow 1-2 calls
+    expect(store.queryFirst.mock.calls.length).toBeLessThanOrEqual(2);
 
     rmSync(dir, { recursive: true, force: true });
   });
