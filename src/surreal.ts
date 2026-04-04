@@ -685,10 +685,13 @@ export class SurrealStore {
     const validated = ids.filter(id => { try { assertRecordId(id); return true; } catch { return false; } });
     if (validated.length === 0) return;
     try {
-      await this.queryExec(
-        `UPDATE $ids SET access_count += 1, last_accessed = time::now()`,
-        { ids: validated },
+      // Direct interpolation (safe: assertRecordId validates format above).
+      // Cannot use `UPDATE $ids` binding — SurrealDB treats string arrays as
+      // literal strings, not record references, causing silent no-ops.
+      const stmts = validated.map(id =>
+        `UPDATE ${id} SET access_count += 1, last_accessed = time::now()`,
       );
+      await this.queryBatch(stmts);
     } catch (e) {
       swallow.warn("surreal:bumpAccessCounts", e);
     }

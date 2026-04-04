@@ -215,15 +215,25 @@ describe("SurrealDB integration", () => {
 
   // ── bumpAccessCounts ──
 
-  itDb("bumpAccessCounts does not throw on valid IDs", async () => {
+  itDb("bumpAccessCounts increments access_count", async () => {
     const id = await store.upsertTurn({
       session_id: "bump-test", role: "user", text: "Bump me", embedding: null,
     });
     if (!id) return;
 
-    // Should not throw — best-effort operation
-    await expect(store.bumpAccessCounts([id])).resolves.toBeUndefined();
-    await expect(store.bumpAccessCounts([id, id])).resolves.toBeUndefined();
+    // Initialize access_count (schema may not default it)
+    await store.queryExec(`UPDATE ${id} SET access_count = 0`);
+
+    await store.bumpAccessCounts([id]);
+    const rows1 = await store.queryFirst<{ access_count: number }>(`SELECT access_count FROM ${id}`);
+    expect(rows1[0]?.access_count).toBe(1);
+
+    await store.bumpAccessCounts([id]);
+    const rows2 = await store.queryFirst<{ access_count: number }>(`SELECT access_count FROM ${id}`);
+    expect(rows2[0]?.access_count).toBe(2);
+  });
+
+  itDb("bumpAccessCounts handles empty array", async () => {
     await expect(store.bumpAccessCounts([])).resolves.toBeUndefined();
   });
 
