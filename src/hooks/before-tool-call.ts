@@ -59,7 +59,7 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
     }
 
     // Tool limit
-    if (session.toolCallCount > session.toolLimit) {
+    if (session.toolCallCount >= session.toolLimit) {
       return {
         block: true,
         blockReason: `Tool call limit reached (${session.toolLimit}). Stop calling tools. Continue exactly where you left off — deliver your answer from what you've gathered. Do NOT repeat anything you already said. State what's done and what remains.`,
@@ -97,24 +97,17 @@ export function createBeforeToolCallHandler(state: GlobalPluginState) {
       }
     }
 
-    // Planning gate: model must output text before first tool call.
-    // If the assistant already emitted text containing a classification keyword
-    // (LOOKUP/EDIT/REFACTOR), the gate passes — inline classification counts.
+    // Planning gate: model must output text before first tool call
     if (textLengthSoFar === 0 && toolIndex === 0) {
       const retrievalNote = session.lastRetrievalSummary
-        ? `\nContext already injected: ${session.lastRetrievalSummary}. Read <graph_context> before calling tools.`
+        ? ` Context: ${session.lastRetrievalSummary}.`
         : "";
       return {
         block: true,
         blockReason:
-          "PLANNING GATE — You must announce your plan before making tool calls.\n" +
-          "1. Classify: LOOKUP (3 calls max), EDIT (4 max), REFACTOR (8 max)\n" +
-          "2. STATE WHAT YOU ALREADY KNOW from injected memory/context — if you have prior knowledge about these files, say so" +
-          retrievalNote + "\n" +
-          "3. List each planned call and what SPECIFIC GAP it fills that memory doesn't cover\n" +
-          "4. Every step still happens, but COMBINED. Edit + test in one bash call, not two.\n" +
-          "If injected context already answers the question, you may need ZERO tool calls.\n" +
-          "Speak your plan, then proceed.",
+          "Plan before tools. Classify (LOOKUP/EDIT/REFACTOR), state what you know from <graph_context>," +
+          " list each call + what gap it fills. Combine steps. 0 calls if context answers it." +
+          retrievalNote,
       };
     }
 

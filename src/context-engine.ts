@@ -226,10 +226,25 @@ export class KongBrainContextEngine implements ContextEngine {
       );
     }
 
+    // Apply SPA priority budget — drop lowest-priority sections if over budget
+    // (dropped sections aren't lost — they're in the graph, retrievable on demand)
+    const BYTES_PER_TOKEN = 4; // claw-code: roughTokenCountEstimation default
+    const SPA_BUDGET_CHARS = Math.round(contextWindow * 0.08 * BYTES_PER_TOKEN);
+    let spaTotalChars = 0;
+    const keptAdditions: string[] = [];
+    for (const section of additions) { // additions are already in priority order
+      if (spaTotalChars + section.length > SPA_BUDGET_CHARS && keptAdditions.length > 0) break;
+      keptAdditions.push(section);
+      spaTotalChars += section.length;
+    }
+
+    const spaText = keptAdditions.length > 0 ? keptAdditions.join("\n\n") : undefined;
+    const spaTokens = spaText ? Math.ceil(spaText.length / BYTES_PER_TOKEN) : 0;
+
     return {
       messages,
-      estimatedTokens: stats.sentTokens,
-      systemPromptAddition: additions.length > 0 ? additions.join("\n\n") : undefined,
+      estimatedTokens: stats.sentTokens + spaTokens,
+      systemPromptAddition: spaText,
     };
   }
 
@@ -256,8 +271,8 @@ export class KongBrainContextEngine implements ContextEngine {
         let embedding: number[] | null = null;
         if (worthEmbedding && embeddings.isAvailable()) {
           try {
-            const embedLimit = Math.round(8192 * 3.4 * 0.8);
-            embedding = await embeddings.embed(text.slice(0, embedLimit));
+            const INGEST_EMBED_CHAR_LIMIT = 22_282; // ~6,554 tokens at 3.4 chars/token (BGE-M3 8192-token window * 0.8 safety margin)
+            embedding = await embeddings.embed(text.slice(0, INGEST_EMBED_CHAR_LIMIT));
           } catch (e) { swallow("ingest:embed", e); }
         }
 
@@ -346,8 +361,9 @@ export class KongBrainContextEngine implements ContextEngine {
 
     // Extract structured compaction signals from stored turns
     let summary: string | undefined;
+    const { store } = this.state;
+    const contextWindow = params.tokenBudget ?? 200_000;
     try {
-      const { store } = this.state;
       if (store.isAvailable()) {
         const turns = await store.getSessionTurnsRich(params.sessionId, 30);
         if (turns.length > 0) {
@@ -370,6 +386,12 @@ export class KongBrainContextEngine implements ContextEngine {
             turns.filter(t => t.tool_name).map(t => t.tool_name!)
           )];
 
+          // Recent errors — preserve tool failure context across compaction
+          const errorRe = /\b(error|failed|exception|crash|panic|TypeError|ReferenceError)\b[^.\n]{0,120}/gi;
+          const recentErrors = [...fullText.matchAll(errorRe)]
+            .map(m => m[0].trim().slice(0, 160))
+            .slice(-3); // last 3 errors only
+
           // Current work inference (claw-code: compact.rs:272-279)
           const lastText = turns.filter(t => t.text.length > 10).at(-1)?.text.slice(0, 200) ?? "";
 
@@ -377,6 +399,7 @@ export class KongBrainContextEngine implements ContextEngine {
           if (pendingMatches.length > 0) parts.push(`PENDING: ${pendingMatches.join("; ")}`);
           if (filePaths.length > 0) parts.push(`FILES: ${filePaths.join(", ")}`);
           if (toolNames.length > 0) parts.push(`TOOLS USED: ${toolNames.join(", ")}`);
+          if (recentErrors.length > 0) parts.push(`RECENT ERRORS: ${recentErrors.join("; ")}`);
           if (lastText) parts.push(`LAST: ${lastText}`);
           parts.push("Resume directly — do not recap what was happening.");
 
@@ -391,13 +414,21 @@ export class KongBrainContextEngine implements ContextEngine {
       }
     } catch { /* non-critical */ }
 
+    // Compaction checkpoint — diagnostic trail for debugging
+    if (store.isAvailable() && session) {
+      store.createCompactionCheckpoint(params.sessionId, 0, session.userTurnCount)
+        .catch(e => swallow.warn("compact:checkpoint", e));
+    }
+
     return {
       ok: true,
-      compacted: !!summary,
-      reason: summary
-        ? "Extracted structured signals for continuation."
-        : "Graph retrieval handles context selection; no LLM-based compaction needed.",
-      result: summary ? { summary, tokensBefore: 0 } : undefined,
+      compacted: true,
+      reason: "Graph-curated context window: assemble() selects relevant context each turn.",
+      result: summary ? {
+        summary,
+        tokensBefore: Math.round(summary.length / 4), // 4 bytes/token (claw-code ratio)
+        tokensAfter: Math.round(contextWindow * 0.325),
+      } : undefined,
     };
   }
 

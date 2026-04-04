@@ -190,7 +190,7 @@ export async function generateReflection(
         { vec: reflEmb },
       );
       const top = existing[0];
-      if (top && (top.score ?? 0) > 0.85) {
+      if (top && typeof top.score === "number" && top.score > 0.85) {
         const newImportance = Math.min(10, (top.importance ?? 7) + 0.5);
         await store.queryFirst<any>(
           `UPDATE $id SET importance = $imp, updated_at = time::now()`,

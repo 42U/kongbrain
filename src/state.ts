@@ -4,6 +4,12 @@ import type { EmbeddingService } from "./embeddings.js";
 import type { AdaptiveConfig } from "./orchestrator.js";
 import type { MemoryDaemon } from "./daemon-manager.js";
 
+/** JSON schema for structured output (forces API to return valid JSON matching schema). */
+export type OutputFormat = {
+  type: "json_schema";
+  schema: Record<string, unknown>;
+};
+
 /** Parameters for an LLM completion call. */
 export type CompleteParams = {
   system?: string;
@@ -13,6 +19,8 @@ export type CompleteParams = {
   temperature?: number;
   maxTokens?: number;
   reasoning?: "none" | "low" | "medium" | "high";
+  /** When set, API returns structured JSON matching the schema (no markdown, no preamble). */
+  outputFormat?: OutputFormat;
 };
 
 /** Result of an LLM completion call. */

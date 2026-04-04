@@ -140,28 +140,24 @@ export async function runCognitiveCheck(
       sections.push(`[TRAJECTORY]\n${trajectory}`);
     }
 
+    const cogCheckSchema = {
+      type: "object" as const,
+      properties: {
+        directives: { type: "array", items: { type: "object" } },
+        grades: { type: "array", items: { type: "object" } },
+        sessionContinuity: { type: "string", enum: ["repeat", "continuation", "new_topic", "tangent"] },
+        preferences: { type: "array", items: { type: "object" } },
+      },
+      required: ["directives", "grades", "sessionContinuity", "preferences"],
+    };
+
     const response = await complete({
-      system: `Assess the retrieved context served to an AI assistant. Return JSON:
-
-"directives": [{type, target, instruction, priority}] — max 3. Types:
-  "repeat": same topic discussed in a prior session — instruct to acknowledge and build on it
-  "continuation": user is continuing prior work — instruct to maintain thread
-  "contradiction": retrieved info conflicts with current conversation — flag it
-  "noise": node is irrelevant despite high similarity score — instruct to ignore
-  "insight": useful pattern the model should lean into
-Priority: "high" (must address), "medium" (should note), "low" (nice to know)
-
-"grades": [{id, relevant, reason, score, learned, resolved}] — one per retrieved node. Score 0.0-1.0. "learned": true ONLY if the node is a [CORRECTION] memory AND the assistant's response already follows the correction without being prompted. "resolved": true if this memory's topic has been fully addressed/completed in the current conversation. Both default false.
-
-"sessionContinuity": "repeat" | "continuation" | "new_topic" | "tangent"
-
-"preferences": [{observation, confidence: "high"|"medium"}] — max 2. User communication style, values, or working preferences inferred from the conversation. Only include if clearly observable. Empty [] if nothing notable.
-
-Return ONLY valid JSON.`,
+      system: `Grade retrieved context. directives: max 3, types: repeat|continuation|contradiction|noise|insight. grades: one per node, learned=true only if CORRECTION already followed unprompted. preferences: max 2, [] if none.`,
       messages: [{
         role: "user",
         content: sections.join("\n\n"),
       }],
+      outputFormat: { type: "json_schema", schema: cogCheckSchema },
     });
 
     const responseText = response.text;

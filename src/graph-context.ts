@@ -56,11 +56,20 @@ function msgContentBlocks(msg: AgentMessage): ContentBlock[] {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const CHARS_PER_TOKEN = 3.4;
-const BUDGET_FRACTION = 0.70;
-const CONVERSATION_SHARE = 0.50;
-const RETRIEVAL_SHARE = 0.30;
-const CORE_MEMORY_SHARE = 0.15;
+// Token estimation ratios (aligned with Claude Code's roughTokenCountEstimation):
+// - Prose/code: 4 bytes per token (claw-code default)
+// - JSON (tool results, structured data): 2 bytes per token (denser single-char tokens)
+// - Safety margin: 4/3 (33%) applied to aggregate estimates
+const BYTES_PER_TOKEN = 4;
+const BYTES_PER_TOKEN_JSON = 2;
+const CHARS_PER_TOKEN = BYTES_PER_TOKEN; // backward compat alias for budget math
+const TOKEN_SAFETY_MARGIN = 4 / 3;
+const IMAGE_TOKEN_ESTIMATE = 2000; // claw-code: hardcoded for images/documents
+const BUDGET_FRACTION = 0.325;       // ~65k of 200k window (leaves ~135k for LLM generation + tool results)
+const CONVERSATION_SHARE = 0.23;     // ~15k for recent user/assistant exchanges
+const RETRIEVAL_SHARE = 0.385;       // ~25k for graph-curated context
+const CORE_MEMORY_SHARE = 0.155;     // ~10k for core memory/directives
+const TOOL_HISTORY_SHARE = 0.23;     // ~15k for recent tool results
 const CORE_MEMORY_TTL = 300_000;
 const MAX_ITEM_CHARS = 1200; // ~350 tokens per item cap (claw-code: MAX_INSTRUCTION_FILE_CHARS)
 const MIN_RELEVANCE_SCORE = 0.35;
@@ -87,20 +96,24 @@ const INTENT_REMINDER_THRESHOLD = 10;
 
 // ── Budget calculation ─────────────────────────────────────────────────────────
 
-interface Budgets {
+/** @internal Exported for testing. */
+export interface Budgets {
   conversation: number;
   retrieval: number;
   core: number;
+  toolHistory: number;
   maxContextItems: number;
 }
 
-function calcBudgets(contextWindow: number): Budgets {
+/** @internal Exported for testing. */
+export function calcBudgets(contextWindow: number): Budgets {
   const total = contextWindow * BUDGET_FRACTION;
   const retrieval = Math.round(total * RETRIEVAL_SHARE);
   return {
     conversation: Math.round(total * CONVERSATION_SHARE),
     retrieval,
     core: Math.round(total * CORE_MEMORY_SHARE),
+    toolHistory: Math.round(total * TOOL_HISTORY_SHARE),
     maxContextItems: Math.max(20, Math.round(retrieval / 300)),
   };
 }
@@ -150,32 +163,43 @@ function extractLastUserText(messages: AgentMessage[]): string | null {
   return null;
 }
 
-/** Estimate char count for a single content block (claw-code: per-block-type estimation). */
+/** Estimate char-equivalent count for a single content block (claw-code: per-block-type estimation). */
 function blockCharLen(c: any): number {
   if (c.type === "text") return c.text.length;
   if (c.type === "thinking") return c.thinking.length;
   if (c.type === "toolCall") {
-    // Count tool name + serialized args (claw-code: compact.rs:326-338)
-    return (c.name?.length ?? 0) + (c.args ? JSON.stringify(c.args).length : 0);
+    // Tool name + serialized args — JSON is denser (2 bytes/token vs 4)
+    // Scale JSON args to char-equivalent at prose ratio
+    const argsJson = c.args ? JSON.stringify(c.args) : "";
+    const argsCharEquiv = argsJson.length * (BYTES_PER_TOKEN / BYTES_PER_TOKEN_JSON);
+    return (c.name?.length ?? 0) + argsCharEquiv;
   }
   if (c.type === "toolResult" && Array.isArray(c.content)) {
     let len = 0;
     for (const rc of c.content) {
-      if (rc.type === "text") len += rc.text.length;
-      else len += 100;
+      if (rc.type === "text") {
+        // Detect JSON-heavy tool results and scale accordingly
+        const text = rc.text ?? "";
+        const isJson = text.length > 20 && (text[0] === "{" || text[0] === "[");
+        len += isJson ? text.length * (BYTES_PER_TOKEN / BYTES_PER_TOKEN_JSON) : text.length;
+      } else {
+        // Images/documents: claw-code hardcodes 2000 tokens
+        len += IMAGE_TOKEN_ESTIMATE * BYTES_PER_TOKEN;
+      }
     }
     return len;
   }
-  return 100; // image, etc.
+  return IMAGE_TOKEN_ESTIMATE * BYTES_PER_TOKEN; // image, document, etc.
 }
 
 function estimateTokens(messages: AgentMessage[]): number {
   let chars = 0;
   for (const msg of messages) {
     for (const c of msgContentBlocks(msg)) chars += blockCharLen(c);
-    chars += 4; // per-message structural overhead
+    chars += 20; // per-message structural overhead (role token, framing, separators)
   }
-  return Math.ceil(chars / CHARS_PER_TOKEN);
+  // Apply safety margin (claw-code: 4/3 multiplier on rough estimates)
+  return Math.ceil((chars / CHARS_PER_TOKEN) * TOKEN_SAFETY_MARGIN);
 }
 
 function msgCharLen(msg: AgentMessage): number {
@@ -241,35 +265,15 @@ function buildRulesSuffix(session: SessionState): string {
     );
   }
 
-  // First time — full examples
+  // First time — compact rules (no verbose examples)
   session.injectedSections.add("rules_full");
   return (
     "\n<rules_reminder>" +
     `\nBudget: ${session.toolCallCount} used, ${remaining} remaining.${urgency}` +
-    "\n\nYOUR BUDGET IS SMALL. Plan the whole task, not just the next call." +
-    "\n" +
-    "\nTask: Fix broken import" +
-    "\n  WASTEFUL (6 calls): grep old → read file → grep new → read context → edit → read to verify" +
-    "\n  DENSE (2 calls):" +
-    "\n    1. grep -n 'oldImport' src/**/*.ts; grep -rn 'newModule' src/" +
-    "\n    2. edit file && npm test -- --grep 'relevant' 2>&1 | tail -20" +
-    "\n" +
-    "\nTask: Debug failing test" +
-    "\n  WASTEFUL (8 calls): run test → read output → read test → read source → grep → read more → edit → rerun" +
-    "\n  DENSE (3 calls):" +
-    "\n    1. npm test 2>&1 | tail -30" +
-    "\n    2. grep -n 'failingTest\\|relevantFn' test/*.ts src/*.ts" +
-    "\n    3. edit fix && npm test 2>&1 | tail -15" +
-    "\n" +
-    "\nTask: Read/understand multiple files" +
-    "\n  WASTEFUL (10 calls): cat file1 → cat file2 → cat file3 → ..." +
-    "\n  DENSE (1-2 calls):" +
-    "\n    1. head -80 src/a.ts src/b.ts src/c.ts src/d.ts  (4 files in ONE call)" +
-    "\n    2. grep -n 'keyPattern' src/*.ts  (search all files at once, not one by one)" +
-    "\n" +
-    "\nEvery step still happens — investigation, edit, verification — but COMBINED into fewer calls." +
-    "\nThe answer is often already in context. Don't call if you already know." +
-    "\nAnnounce: task type (LOOKUP=1/EDIT=2/REFACTOR=6), planned calls, what each does." +
+    "\nClassify: LOOKUP(≤3) | EDIT(≤4) | REFACTOR(≤8). Announce type + plan before tools." +
+    "\nCombine: grep+grep in 1 call, edit+test in 1 bash. Read multiple files in 1 call." +
+    "\nSkip: if <graph_context> already answers it, zero calls needed." +
+    "\nBe dense: lead with answer, no filler, no repeating context back." +
     "\n</rules_reminder>"
   );
 }
@@ -521,23 +525,22 @@ function formatTierSection(entries: CoreMemoryEntry[], label: string): string {
 function buildSystemPromptSection(session: SessionState, tier0Entries: CoreMemoryEntry[]): string | undefined {
   const parts: string[] = [];
 
-  // IKONG architecture description (static, ~120 tokens)
+  // Graph pillar IDs (compact — the model doesn't need architecture descriptions)
   const pillarLines: string[] = [];
   if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
   if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
   if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
   if (pillarLines.length > 0) {
-    parts.push(
-      "GRAPH PILLARS (your structural context):\n" +
-      `  ${pillarLines.join(" | ")}\n` +
-      "  IKONG cognitive architecture:\n" +
-      "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
-      "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
-      "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
-      "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
-      "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
-    );
+    parts.push(`GRAPH PILLARS: ${pillarLines.join(" | ")}`);
   }
+
+  // Token-density directive — shapes model output to be concise
+  parts.push(
+    "OUTPUT RULES: Lead with the answer. No preamble, no restating the question, no repeating context back. " +
+    "If <graph_context> answers it, say so in 1 sentence — don't call tools. " +
+    "Combine tool calls (grep+grep, edit+test in one bash). " +
+    "Skip filler (\"Let me...\", \"I'll now...\", \"Sure!\"). Just do it.",
+  );
 
   // Tier 0 core directives (semi-static, changes rarely)
   const t0Section = formatTierSection(tier0Entries, "CORE DIRECTIVES (always loaded, never evicted)");
@@ -604,7 +607,7 @@ async function formatContextMessage(
 
   const sections: string[] = [];
 
-  // Pillar context — structural awareness of who/what/where
+  // Pillar context — structural IDs only (architecture description is unnecessary token spend)
   // Skip if model already has it in the conversation window (claw-code static section dedup)
   if (!session.injectedSections.has("ikong")) {
     const pillarLines: string[] = [];
@@ -612,16 +615,7 @@ async function formatContextMessage(
     if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
     if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
     if (pillarLines.length > 0) {
-      sections.push(
-        "GRAPH PILLARS (your structural context):\n" +
-        `  ${pillarLines.join(" | ")}\n` +
-        "  IKONG cognitive architecture:\n" +
-        "    I(ntelligence): intent classification → adaptive orchestration per turn\n" +
-        "    K(nowledge): memory graph, concepts, skills, reflections, identity chunks\n" +
-        "    O(peration): tool execution, skill procedures, causal chain tracking\n" +
-        "    N(etwork): graph traversal, cross-pillar edges, neighbor expansion\n" +
-        "    G(raph): SurrealDB persistence, vector search, BGE-M3 embeddings",
-      );
+      sections.push(`GRAPH PILLARS: ${pillarLines.join(" | ")}`);
       session.injectedSections.add("ikong");
     }
   }
@@ -655,8 +649,10 @@ async function formatContextMessage(
     clearPendingDirectives(session);
   }
 
-  // Fibonacci resurfacing
-  try {
+  // Fibonacci resurfacing — only during conversational intents (noise during deep code work)
+  const RESURFACE_INTENTS = new Set(["simple-question", "meta-session", "unknown"]);
+  const currentIntent = session.currentConfig?.intent ?? "unknown";
+  if (RESURFACE_INTENTS.has(currentIntent)) try {
     const dueMemories = await store.getDueMemories(3);
     if (dueMemories.length > 0) {
       const memLines = dueMemories.map((m: any) => {
@@ -755,11 +751,20 @@ function truncateToolResult(msg: AgentMessage, maxChars: number): AgentMessage {
   return { ...msg, content };
 }
 
-function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWindow: number, session?: SessionState): AgentMessage[] {
-  const budgetChars = maxTokens * CHARS_PER_TOKEN;
-  const TOOL_RESULT_MAX = Math.round(contextWindow * 0.03);
+function getRecentTurns(
+  messages: AgentMessage[],
+  convTokens: number,
+  toolTokens: number,
+  contextWindow: number,
+  session?: SessionState,
+): AgentMessage[] {
+  const convBudgetChars = convTokens * CHARS_PER_TOKEN;
+  const toolBudgetChars = toolTokens * CHARS_PER_TOKEN;
+  // Per-tool-result char cap (claw-code: DEFAULT_MAX_RESULT_SIZE_CHARS = 50,000)
+  // Scale with context window but floor at 20k, cap at 50k
+  const TOOL_RESULT_MAX = Math.min(50_000, Math.max(20_000, Math.round(contextWindow * 0.10)));
 
-  // Transform error messages into compact annotations
+  // ── Phase 1: Transform error messages into compact annotations ──
   const clean = messages.map((m) => {
     if (isAssistant(m) && m.stopReason === "error") {
       const errorText = m.content
@@ -776,7 +781,83 @@ function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWind
     return m;
   });
 
-  // Group messages into structural units
+  // ── Phase 2: Strip token-heavy content from non-recent messages ──
+  // (claw-code patterns: microcompact content-clearing, image stripping, thinking clearing)
+  const RECENT_KEEP = 5; // keep last N groups fully intact
+  const msgCount = clean.length;
+
+  // Find recency boundary: messages in the last RECENT_KEEP groups stay intact
+  // We need to identify which messages are "old" vs "recent"
+  // Count groups from the end to find the boundary index
+  let recentBoundary = msgCount;
+  {
+    let groupsSeen = 0;
+    for (let k = clean.length - 1; k >= 0 && groupsSeen < RECENT_KEEP; k--) {
+      recentBoundary = k;
+      const msg = clean[k];
+      // Each user message or standalone assistant message starts a new group
+      if (isUser(msg) || (isAssistant(msg) && !msg.content.some((c: any) => c.type === "toolCall"))) {
+        groupsSeen++;
+      } else if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
+        groupsSeen++;
+        // Skip past associated tool results (they're part of this group)
+      }
+    }
+  }
+
+  // Apply stripping to messages before the recency boundary
+  for (let k = 0; k < recentBoundary; k++) {
+    const msg = clean[k] as any;
+    if (!msg.content || !Array.isArray(msg.content)) continue;
+
+    // Collapse old assistant filler text (agentic loop: "I'll now read..." / "Let me check...")
+    // Keep tool calls intact but shrink prose to 1-line summary
+    if (isAssistant(msg) && msg.content.some((c: any) => c.type === "toolCall")) {
+      msg.content = msg.content.map((c: any) => {
+        if (c.type === "text" && c.text.length > 120) {
+          // Keep first line as summary (usually the intent statement)
+          const firstLine = c.text.split("\n")[0].slice(0, 120);
+          return { ...c, text: firstLine };
+        }
+        if (c.type === "thinking") {
+          return { type: "text" as const, text: "[thinking]" };
+        }
+        return c; // preserve toolCall blocks
+      });
+      continue; // skip generic stripping for this message
+    }
+
+    msg.content = msg.content.map((c: any) => {
+      // Strip thinking blocks → [thinking] marker (often 1-5k tokens each)
+      if (c.type === "thinking") {
+        return { type: "text" as const, text: "[thinking]" };
+      }
+      // Strip images → [image] marker (2000 tokens each)
+      if (c.type === "image" || c.type === "image_url" || (c.type === "source" && c.media_type?.startsWith("image/"))) {
+        return { type: "text" as const, text: "[image]" };
+      }
+      // Content-clear old tool results → stub (claw-code: microcompact pattern)
+      if (c.type === "toolResult" && Array.isArray(c.content)) {
+        const stub = c.content.map((rc: any) => {
+          if (rc.type === "text" && rc.text.length > 200) {
+            return { ...rc, text: `[Old tool result cleared — ${rc.text.length} chars]` };
+          }
+          if (rc.type === "image" || rc.type === "image_url") {
+            return { type: "text" as const, text: "[image]" };
+          }
+          return rc;
+        });
+        return { ...c, content: stub };
+      }
+      // For tool result messages (top-level), clear oversized text blocks
+      if (c.type === "text" && isToolResult(msg) && c.text.length > 200) {
+        return { ...c, text: `[Old tool result cleared — ${c.text.length} chars]` };
+      }
+      return c;
+    });
+  }
+
+  // ── Phase 3: Group messages into structural units ──
   const groups: AgentMessage[][] = [];
   let i = 0;
   while (i < clean.length) {
@@ -807,17 +888,38 @@ function getRecentTurns(messages: AgentMessage[], maxTokens: number, contextWind
     }
   }
 
-  // Take groups from end within budget
-  const pinnedLen = pinnedGroup ? pinnedGroup.reduce((s, m) => s + msgCharLen(m), 0) : 0;
-  const remainingBudget = budgetChars - pinnedLen;
-  let used = 0;
+  // Measure pinned group against both budgets
+  let pinnedConv = 0;
+  let pinnedTool = 0;
+  if (pinnedGroup) {
+    for (const m of pinnedGroup) {
+      if (isToolResult(m)) pinnedTool += msgCharLen(m);
+      else pinnedConv += msgCharLen(m);
+    }
+  }
+
+  // Take groups from end within split budgets
+  const remainingConv = convBudgetChars - pinnedConv;
+  const remainingTool = toolBudgetChars - pinnedTool;
+  let convUsed = 0;
+  let toolUsed = 0;
   const selectedGroups: AgentMessage[][] = [];
   for (let g = groups.length - 1; g >= 0; g--) {
     if (g === pinnedGroupIdx) continue;
-    const groupLen = groups[g].reduce((s, m) => s + msgCharLen(m), 0);
-    if (used + groupLen > remainingBudget && selectedGroups.length > 0) break;
+    let groupConv = 0;
+    let groupTool = 0;
+    for (const m of groups[g]) {
+      if (isToolResult(m)) groupTool += msgCharLen(m);
+      else groupConv += msgCharLen(m);
+    }
+    // Stop if either budget would overflow (but always include at least one group)
+    if (selectedGroups.length > 0) {
+      if (convUsed + groupConv > remainingConv) break;
+      if (groupTool > 0 && toolUsed + groupTool > remainingTool) break;
+    }
     selectedGroups.unshift(groups[g]);
-    used += groupLen;
+    convUsed += groupConv;
+    toolUsed += groupTool;
   }
 
   if (pinnedGroup && pinnedGroupIdx !== -1) {
@@ -878,6 +980,11 @@ export async function graphTransformContext(
       ? applyCoreBudget(await store.getAllCoreMemory(0), getTier0BudgetChars(budgets))
       : [];
     systemPromptSection = buildSystemPromptSection(session, tier0ForSys);
+    // Mark sections as injected so formatContextMessage() skips them (prevents duplication)
+    if (systemPromptSection) {
+      if (systemPromptSection.includes("GRAPH PILLARS")) session.injectedSections.add("ikong");
+      if (systemPromptSection.includes("CORE DIRECTIVES")) session.injectedSections.add("tier0");
+    }
   } catch { /* non-critical — tier0 will still appear in user message */ }
 
   // Never throw — return raw messages on any failure
@@ -947,7 +1054,7 @@ async function graphTransformInner(
   // Skip retrieval fast path — avoid DB queries entirely when model already has core memory
   // (claw-code pattern: simple_mode skips the load, not load-then-discard)
   if (skipRetrieval) {
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+    const recentTurns = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
     // If model already saw core memory, just return recent turns + compressed rules. Zero DB queries.
     if (session.injectedSections.has("tier0")) {
       return { messages: injectRulesSuffix(recentTurns, session), stats: makeStats(recentTurns, 0, 0, recentTurns.length, "passthrough") };
@@ -992,7 +1099,7 @@ async function graphTransformInner(
   const surrealUp = store.isAvailable();
 
   if (!embeddingsUp || !surrealUp) {
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+    const recentTurns = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
     if (tier0.length > 0 || tier1.length > 0) {
       const coreContext = await formatContextMessage([], store, session, "", tier0, tier1);
       const result = [coreContext, ...recentTurns];
@@ -1049,7 +1156,7 @@ async function graphTransformInner(
         const reflCtx = cached.reflections.length > 0 ? formatReflectionContext(cached.reflections) : "";
 
         const injectedContext = await formatContextMessage(contextNodes, store, session, skillCtx + reflCtx, tier0, tier1);
-        const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+        const recentTurns = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
         const result = [injectedContext, ...recentTurns];
         return { messages: injectRulesSuffix(result, session), stats: makeStats(result, contextNodes.length, 0, recentTurns.length, "graph", true) };
       }
@@ -1099,7 +1206,7 @@ async function graphTransformInner(
     contextNodes = await ensureRecentTurns(contextNodes, session.sessionId, store);
 
     if (contextNodes.length === 0) {
-      const result = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+      const result = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
       return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, result.length, "graph") };
     }
 
@@ -1131,7 +1238,7 @@ async function graphTransformInner(
     } catch (e) { swallow("graph-context:reflections", e); }
 
     const injectedContext = await formatContextMessage(contextNodes, store, session, skillContext + reflectionContext, tier0, tier1);
-    const recentTurns = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+    const recentTurns = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
     const result = [injectedContext, ...recentTurns];
     return {
       messages: injectRulesSuffix(result, session),
@@ -1144,7 +1251,7 @@ async function graphTransformInner(
     };
   } catch (err) {
     console.error("Graph context error, falling back:", err);
-    const result = getRecentTurns(messages, budgets.conversation, contextWindow, session);
+    const result = getRecentTurns(messages, budgets.conversation, budgets.toolHistory, contextWindow, session);
     return { messages: injectRulesSuffix(result, session), stats: makeStats(result, 0, 0, result.length, "recency-only") };
   }
 }

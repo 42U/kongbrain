@@ -92,33 +92,62 @@ export function startMemoryDaemon(
 
     const systemPrompt = buildSystemPrompt(thinking.length > 0, retrievedMemories.length > 0, priorState);
 
+    // Structured output schema — forces API to return valid JSON (no markdown, no preamble)
+    const extractionSchema = {
+      type: "object" as const,
+      properties: {
+        causal: { type: "array", items: { type: "object" } },
+        monologue: { type: "array", items: { type: "object" } },
+        resolved: { type: "array", items: { type: "string" } },
+        concepts: { type: "array", items: { type: "object" } },
+        corrections: { type: "array", items: { type: "object" } },
+        preferences: { type: "array", items: { type: "object" } },
+        artifacts: { type: "array", items: { type: "object" } },
+        decisions: { type: "array", items: { type: "object" } },
+        skills: { type: "array", items: { type: "object" } },
+      },
+      required: ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"],
+    };
+
     const response = await complete({
       system: systemPrompt,
       messages: [{ role: "user", content: sections.join("\n\n") }],
+      outputFormat: { type: "json_schema", schema: extractionSchema },
     });
 
     const responseText = response.text;
 
-    const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return;
-
+    // With structured output the response should be valid JSON directly.
+    // Fall back to regex extraction if the provider doesn't support outputFormat.
     let result: Record<string, any>;
     try {
-      result = JSON.parse(jsonMatch[0]);
+      result = JSON.parse(responseText);
     } catch {
+      const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+      if (!jsonMatch) {
+        swallow.warn("daemon:noJson", new Error(`LLM response contained no JSON (${responseText.length} chars)`));
+        return;
+      }
       try {
-        result = JSON.parse(jsonMatch[0].replace(/,\s*([}\]])/g, "$1"));
+        result = JSON.parse(jsonMatch[0]);
       } catch {
-        result = {};
-        const fields = ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"];
-        for (const field of fields) {
-          const fieldMatch = jsonMatch[0].match(new RegExp(`"${field}"\\s*:\\s*(\\[[\\s\\S]*?\\])(?=\\s*[,}]\\s*"[a-z]|\\s*\\}$)`, "m"));
-          if (fieldMatch) {
-            try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
+        try {
+          result = JSON.parse(jsonMatch[0].replace(/,\s*([}\]])/g, "$1"));
+        } catch {
+          result = {};
+          const fields = ["causal", "monologue", "resolved", "concepts", "corrections", "preferences", "artifacts", "decisions", "skills"];
+          for (const field of fields) {
+            const fieldMatch = jsonMatch[0].match(new RegExp(`"${field}"\\s*:\\s*(\\[[\\s\\S]*?\\])(?=\\s*[,}]\\s*"[a-z]|\\s*\\}$)`, "m"));
+            if (fieldMatch) {
+              try { result[field] = JSON.parse(fieldMatch[1]); } catch { /* skip */ }
+            }
+          }
+          const PRIMARY_FIELDS = ["causal", "monologue", "artifacts"];
+          if (!PRIMARY_FIELDS.some(f => f in result)) {
+            swallow.warn("daemon:fallbackFailed", new Error(`Regex fallback extracted no primary fields from: ${jsonMatch[0].slice(0, 100)}`));
+            return;
           }
         }
-        const PRIMARY_FIELDS = ["causal", "monologue", "artifacts"];
-        if (!PRIMARY_FIELDS.some(f => f in result)) return;
       }
     }
 
@@ -164,9 +193,14 @@ export function startMemoryDaemon(
     sendTurnBatch(turns, thinking, retrievedMemories, priorExtractions) {
       if (shuttingDown) return;
       if (pendingBatch) {
-        swallow.warn("daemon:batchOverwrite", new Error(`Overwriting pending batch (${pendingBatch.turns.length} turns) with new batch (${turns.length} turns)`));
+        // Merge into pending batch instead of discarding — prevents turn data loss
+        pendingBatch.turns = [...pendingBatch.turns, ...turns];
+        pendingBatch.thinking = [...pendingBatch.thinking, ...thinking];
+        pendingBatch.retrievedMemories = [...pendingBatch.retrievedMemories, ...retrievedMemories];
+        pendingBatch.priorExtractions = priorExtractions ?? pendingBatch.priorExtractions;
+      } else {
+        pendingBatch = { turns, thinking, retrievedMemories, priorExtractions };
       }
-      pendingBatch = { turns, thinking, retrievedMemories, priorExtractions };
       // Fire-and-forget
       processPending().catch(e => swallow.warn("daemon:sendBatch", e));
     },

@@ -16,6 +16,20 @@ import { swallow } from "./errors.js";
 import { linkToRelevantConcepts } from "./concept-extract.js";
 import { assertRecordId } from "./surreal.js";
 
+// --- Shared schema for structured output ---
+
+const skillSchema = {
+  type: "object" as const,
+  properties: {
+    name: { type: "string" },
+    description: { type: "string" },
+    preconditions: { type: "string" },
+    steps: { type: "array", items: { type: "object", properties: { tool: { type: "string" }, description: { type: "string" } } } },
+    postconditions: { type: "string" },
+  },
+  required: ["name", "description", "steps"],
+};
+
 // --- Types ---
 
 export interface SkillStep {
@@ -71,11 +85,12 @@ export async function extractSkill(
 
   try {
     const response = await complete({
-      system: `Return JSON or null. Fields: {name, description, preconditions, steps: [{tool, description}] (max 8), postconditions}. Generic patterns only (no specific paths). null if no clear multi-step workflow.`,
+      system: `Extract a reusable skill procedure. Generic patterns only (no specific paths). Return null if no clear multi-step workflow.`,
       messages: [{
         role: "user",
         content: `${turns.length} turns:\n${transcript.slice(0, 20000)}`,
       }],
+      outputFormat: { type: "json_schema", schema: skillSchema },
     });
 
     const text = response.text;
@@ -290,19 +305,21 @@ export async function graduateCausalToSkills(
       if (existing.length > 0) continue;
 
       const resp = await complete({
-        system: `Return JSON: {name, description, preconditions, steps: [{tool, description}] (max 6), postconditions}. Synthesize a reusable procedure from these recurring patterns. Generic — no specific file paths or variable names.`,
+        system: `Synthesize a reusable procedure from recurring patterns. Generic — no specific file paths or variable names.`,
         messages: [{
           role: "user",
           content: `${group.cnt} successful "${group.chain_type}" patterns:\n${group.descriptions.slice(0, 8).join("\n")}`,
         }],
+        outputFormat: { type: "json_schema", schema: skillSchema },
       });
 
       const text = resp.text;
-      const jsonMatch = text.match(/\{[\s\S]*?\}/);
-      if (!jsonMatch) continue;
-
       let parsed: ExtractedSkill;
-      try { parsed = JSON.parse(jsonMatch[0]); } catch { continue; }
+      try { parsed = JSON.parse(text); } catch {
+        const jsonMatch = text.match(/\{[\s\S]*?\}/);
+        if (!jsonMatch) continue;
+        try { parsed = JSON.parse(jsonMatch[0]); } catch { continue; }
+      }
       if (!parsed.name || !Array.isArray(parsed.steps) || parsed.steps.length === 0) continue;
 
       let skillEmb: number[] | null = null;

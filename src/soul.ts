@@ -551,16 +551,32 @@ Output ONLY valid JSON:
 Be honest, not aspirational. Only claim what the data supports.`;
 
   try {
+    const soulSchema = {
+      type: "object" as const,
+      properties: {
+        working_style: { type: "array", items: { type: "string" } },
+        emotional_dimensions: { type: "array", items: { type: "object" } },
+        self_observations: { type: "array", items: { type: "string" } },
+        earned_values: { type: "array", items: { type: "object" } },
+      },
+      required: ["working_style", "emotional_dimensions", "self_observations", "earned_values"],
+    };
+
     const response = await complete({
       system: "You are introspecting on your own experience to write a self-assessment. Be genuine and grounded.",
       messages: [{
         role: "user",
         content: prompt,
       }],
+      outputFormat: { type: "json_schema", schema: soulSchema },
     });
 
     const text = response.text.trim();
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    // With structured output, response should be valid JSON directly
+    let jsonMatch: RegExpMatchArray | null;
+    try { JSON.parse(text); jsonMatch = [text]; } catch {
+      jsonMatch = text.match(/\{[\s\S]*?\}/);
+    }
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]);

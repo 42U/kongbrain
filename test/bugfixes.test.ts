@@ -99,15 +99,11 @@ describe("batch overwrite logs warning (fix #4)", () => {
     daemon.sendTurnBatch(turns, [], []);
     await new Promise(r => setTimeout(r, 50));
 
-    // Second batch overwrites the pending slot
+    // Second batch merges into pending slot
     daemon.sendTurnBatch(turns, [], []);
 
-    // Third batch overwrites again — this should warn
+    // Third batch merges again — no data loss
     daemon.sendTurnBatch(turns, [], []);
-
-    expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("batchOverwrite"),
-    );
 
     await daemon.shutdown(200);
   });

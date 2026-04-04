@@ -367,6 +367,7 @@ export default definePluginEntry({
         // Pass apiKey directly in options so the provider can use it
         const response = await piAi!.completeSimple(model, context, {
           apiKey: auth.apiKey,
+          ...(params.outputFormat && { outputFormat: params.outputFormat }),
         });
         let text = "";
         let thinking: string | undefined;
@@ -566,7 +567,7 @@ export default definePluginEntry({
       if (shutdownPromise) cleanups.push(shutdownPromise);
 
       const done = Promise.allSettled(cleanups).then(() => {
-        gs.shutdown().catch(() => {});
+        gs.shutdown().catch(e => console.error("[kongbrain] shutdown error:", e));
       });
 
       done.then(() => process.exit(0)).catch(() => process.exit(1));

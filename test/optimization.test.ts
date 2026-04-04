@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SessionState } from "../src/state.js";
-import { cosineSimilarity } from "../src/graph-context.js";
+import { cosineSimilarity, calcBudgets } from "../src/graph-context.js";
 import { createBeforeToolCallHandler } from "../src/hooks/before-tool-call.js";
 
 // ── SessionState optimization fields ──────────────────────────────────────────
@@ -333,7 +333,7 @@ describe("createBeforeToolCallHandler", () => {
         ctx,
       );
       expect(result?.block).toBe(true);
-      expect(result?.blockReason).toContain("PLANNING GATE");
+      expect(result?.blockReason).toContain("Plan before tools");
       expect(result?.blockReason).toContain("12 context items + 3 neighbors injected");
     });
 
@@ -347,7 +347,7 @@ describe("createBeforeToolCallHandler", () => {
         ctx,
       );
       expect(result?.block).toBe(true);
-      expect(result?.blockReason).toContain("PLANNING GATE");
+      expect(result?.blockReason).toContain("Plan before tools");
       expect(result?.blockReason).not.toContain("Context already injected:");
     });
   });
@@ -364,5 +364,56 @@ describe("createBeforeToolCallHandler", () => {
       await handler(makeEvent(), ctx);
       expect(session.apiCycleCount).toBe(2);
     });
+  });
+});
+
+// ── Dense 65k context window budget tests ────────────────────────────────────
+
+describe("calcBudgets — dense 65k window", () => {
+  it("produces ~65k total for 200k context window", () => {
+    const budgets = calcBudgets(200_000);
+    const total = budgets.conversation + budgets.retrieval + budgets.core + budgets.toolHistory;
+    // 200k * 0.325 = 65k
+    expect(total).toBeGreaterThan(60_000);
+    expect(total).toBeLessThan(70_000);
+  });
+
+  it("includes toolHistory budget", () => {
+    const budgets = calcBudgets(200_000);
+    expect(budgets.toolHistory).toBeGreaterThan(0);
+    // ~15k for tool history (23% of 65k)
+    expect(budgets.toolHistory).toBeGreaterThan(12_000);
+    expect(budgets.toolHistory).toBeLessThan(18_000);
+  });
+
+  it("allocates ~15k for conversation", () => {
+    const budgets = calcBudgets(200_000);
+    expect(budgets.conversation).toBeGreaterThan(12_000);
+    expect(budgets.conversation).toBeLessThan(18_000);
+  });
+
+  it("allocates ~25k for graph retrieval", () => {
+    const budgets = calcBudgets(200_000);
+    expect(budgets.retrieval).toBeGreaterThan(22_000);
+    expect(budgets.retrieval).toBeLessThan(28_000);
+  });
+
+  it("allocates ~10k for core memory", () => {
+    const budgets = calcBudgets(200_000);
+    expect(budgets.core).toBeGreaterThan(8_000);
+    expect(budgets.core).toBeLessThan(12_000);
+  });
+
+  it("scales proportionally with context window size", () => {
+    const small = calcBudgets(100_000);
+    const large = calcBudgets(400_000);
+    expect(large.conversation).toBeCloseTo(small.conversation * 4, -3);
+    expect(large.retrieval).toBeCloseTo(small.retrieval * 4, -3);
+    expect(large.toolHistory).toBeCloseTo(small.toolHistory * 4, -3);
+  });
+
+  it("maxContextItems is at least 20", () => {
+    const budgets = calcBudgets(50_000);
+    expect(budgets.maxContextItems).toBeGreaterThanOrEqual(20);
   });
 });
