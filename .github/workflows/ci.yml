@@ -23,10 +23,16 @@ jobs:
           docker run -d --name surrealdb -p 8000:8000 \
             surrealdb/surrealdb:latest start \
             --user root --pass root --bind 0.0.0.0:8000 memory
-          # Wait for it to be ready
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/health && break || sleep 1
+          # Wait for it to be ready (up to 60s)
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "SurrealDB ready after ${i}s"
+              break
+            fi
+            sleep 1
           done
+          # Verify it's actually responding
+          curl -sf http://localhost:8000/health || (echo "SurrealDB failed to start" && exit 1)
 
       - run: npm install --ignore-scripts --legacy-peer-deps
 

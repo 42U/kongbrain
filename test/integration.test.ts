@@ -18,11 +18,14 @@ let store: SurrealStore;
 
 beforeAll(async () => {
   if (SKIP) return;
+  const url = process.env.SURREAL_URL ?? "ws://127.0.0.1:8000/rpc";
+  const user = process.env.SURREAL_USER ?? "root";
+  const pass = process.env.SURREAL_PASS ?? "root";
   store = new SurrealStore({
-    url: "ws://127.0.0.1:8000/rpc",
-    get httpUrl() { return "http://127.0.0.1:8000"; },
-    user: "root",
-    pass: "root",
+    url,
+    get httpUrl() { return url.replace("ws://", "http://").replace("wss://", "https://").replace("/rpc", ""); },
+    user,
+    pass,
     ns: TEST_NS,
     db: TEST_DB,
   });
@@ -32,7 +35,7 @@ beforeAll(async () => {
     console.warn("SurrealDB not available, skipping integration tests:", (e as Error).message);
     store = undefined as any;
   }
-}, 15_000);
+}, 30_000);
 
 afterAll(async () => {
   if (!store) return;
@@ -43,7 +46,7 @@ afterAll(async () => {
   try {
     await store.shutdown();
   } catch { /* ok */ }
-}, 5_000);
+}, 15_000);
 
 // Helper to skip when DB unavailable
 function itDb(name: string, fn: () => Promise<void>, timeout?: number) {
