@@ -337,10 +337,8 @@ export default definePluginEntry({
       }
 
       const complete: CompleteFn = async (params) => {
-        // Try runtime.complete first (future-proof for when it ships)
-        if (typeof apiRef.runtime?.complete === "function") {
-          return apiRef.runtime.complete(params);
-        }
+        // NOTE: runtime.complete exists in 2026.4.2 but fails for plugin-initiated
+        // calls with "Profile anthropic:default timed out" — use pi-ai directly instead.
         if (!piAi) {
           if (!piAiPath) {
             throw new Error("LLM completion not available: @mariozechner/pi-ai not found and runtime.complete missing");
@@ -349,8 +347,20 @@ export default definePluginEntry({
         }
         // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
         const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
-        const modelId = params.model ?? apiRef.runtime.agent.defaults.model;
-        const model = piAi!.getModel(provider, modelId);
+        const rawModel = params.model ?? apiRef.runtime.agent.defaults.model;
+        // defaults.model may be an object {primary: '...', fallbacks: []} — unwrap it
+        const modelIdRaw = typeof rawModel === 'object' && rawModel !== null
+          ? (rawModel as any).primary ?? (rawModel as any).id ?? String(rawModel)
+          : rawModel;
+        // modelId may be "provider/model" format — split if provider not set
+        let resolvedProvider = provider;
+        let modelId = modelIdRaw;
+        if (typeof modelId === 'string' && modelId.includes('/') && !resolvedProvider) {
+          const idx = modelId.indexOf('/');
+          resolvedProvider = modelId.slice(0, idx);
+          modelId = modelId.slice(idx + 1);
+        }
+        const model = piAi!.getModel(resolvedProvider, modelId);
         if (!model) {
           throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
         }
@@ -369,10 +379,22 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
+        log.info(`complete() calling pi-ai: provider=${resolvedProvider} model=${modelId} msgLen=${params.messages.length}`);
         const response = await piAi!.completeSimple(model, context, {
           apiKey: auth.apiKey,
-          ...(params.outputFormat && { outputFormat: params.outputFormat }),
+          // pi-ai doesn't have an outputFormat field — inject it into the raw API
+          // payload via the onPayload hook so the Anthropic provider sends it
+          ...(params.outputFormat && {
+            onPayload: (payload: any) => {
+              if (payload && typeof payload === "object") {
+                // Anthropic API uses output_format for structured output
+                payload.output_format = params.outputFormat;
+              }
+              return payload;
+            },
+          }),
         });
+        log.debug(`complete() returned: ${response.content?.length} blocks, stop=${response.stopReason}`);
         let text = "";
         let thinking: string | undefined;
         for (const block of response.content) {
