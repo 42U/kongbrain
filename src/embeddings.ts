@@ -8,8 +8,38 @@ import { log } from "./log.js";
 type LlamaEmbeddingContext = import("node-llama-cpp").LlamaEmbeddingContext;
 type LlamaModel = import("node-llama-cpp").LlamaModel;
 
+/**
+ * Provider-agnostic embedding service.
+ *
+ * Implementations must guarantee that vectors they produce are in the same
+ * vector space across calls within a single instance. Different implementations
+ * (or different models within the same implementation) produce vectors in
+ * different spaces and must not be compared with cosine similarity. The
+ * `providerId` field is the stable tag used to detect cross-space mixing.
+ */
+export interface EmbeddingService {
+  /** Stable identifier for the (provider, model, dimension) tuple. */
+  readonly providerId: string;
+  /** Dimensionality of the vectors this service produces. */
+  readonly dimensions: number;
+
+  /** Initialize the underlying model. Returns true on first init, false if already ready. */
+  initialize(): Promise<boolean>;
+  /** Return the embedding vector for a single text. */
+  embed(text: string): Promise<number[]>;
+  /** Return embedding vectors for an array of texts. */
+  embedBatch(texts: string[]): Promise<number[][]>;
+  /** True once initialize() has succeeded. */
+  isAvailable(): boolean;
+  /** Release any underlying resources (model handles, sockets, etc.). */
+  dispose(): Promise<void>;
+}
+
 /** BGE-M3 embedding service (1024-dim via GGUF) with an LRU cache of up to 512 entries. */
-export class EmbeddingService {
+export class LocalEmbeddingService implements EmbeddingService {
+  readonly providerId: string;
+  readonly dimensions: number;
+
   private model: LlamaModel | null = null;
   private ctx: LlamaEmbeddingContext | null = null;
   private ready = false;
@@ -17,9 +47,11 @@ export class EmbeddingService {
   private cache = new Map<string, number[]>();
   private readonly maxCacheSize = 512;
 
-  constructor(private readonly config: EmbeddingConfig) {}
+  constructor(private readonly config: EmbeddingConfig) {
+    this.providerId = "local-bge-m3";
+    this.dimensions = config.dimensions;
+  }
 
-  /** Initialize the embedding model. Returns true if freshly loaded, false if already ready. */
   async initialize(): Promise<boolean> {
     if (this.ready) return false;
     if (!existsSync(this.config.modelPath)) {
@@ -42,19 +74,16 @@ export class EmbeddingService {
     return true;
   }
 
-  /** Return the embedding vector for text, serving from LRU cache on repeat calls. */
   async embed(text: string): Promise<number[]> {
     if (!this.ready || !this.ctx) throw new Error("Embeddings not initialized");
     const cached = this.cache.get(text);
     if (cached) {
-      // Move to end for LRU freshness
       this.cache.delete(text);
       this.cache.set(text, cached);
       return cached;
     }
     const result = await this.ctx.getEmbeddingFor(text);
     const vec = Array.from(result.vector);
-    // Evict oldest if at capacity
     if (this.cache.size >= this.maxCacheSize) {
       this.cache.delete(this.cache.keys().next().value!);
     }
@@ -81,4 +110,9 @@ export class EmbeddingService {
       swallow("embeddings:dispose", e);
     }
   }
+}
+
+/** Construct the configured embedding service. Adding a new provider plugs in here. */
+export function createEmbeddingService(config: EmbeddingConfig): EmbeddingService {
+  return new LocalEmbeddingService(config);
 }
