@@ -10,7 +10,7 @@ import { join, dirname } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
-import { EmbeddingService } from "./embeddings.js";
+import { createEmbeddingService } from "./embeddings.js";
 import { GlobalPluginState, type CompleteFn } from "./state.js";
 import { KongBrainContextEngine } from "./context-engine.js";
 import { createRecallToolDef } from "./tools/recall.js";
@@ -316,7 +316,7 @@ export default definePluginEntry({
     let globalState = getGlobalState();
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
-      const embeddings = new EmbeddingService(config.embedding);
+      const embeddings = createEmbeddingService(config.embedding);
       // Build a CompleteFn using pi-ai directly since api.runtime.complete
       // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;
