@@ -11,7 +11,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
-[![Tests](https://img.shields.io/badge/Tests-415_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Tests](https://img.shields.io/badge/Tests-469_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 **A graph-backed cognitive engine for [OpenClaw](https://github.com/openclaw/openclaw).**
 
@@ -121,7 +121,9 @@ openclaw tui
 
 That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
 
-The BGE-M3 embedding model (~420MB) downloads automatically on first startup from [Hugging Face](https://huggingface.co/BAAI/bge-m3). All database tables and indexes are created automatically on first run. No manual setup required.
+By default KongBrain runs the BGE-M3 embedding model locally via `node-llama-cpp` — the GGUF (~420MB) auto-downloads from [Hugging Face](https://huggingface.co/BAAI/bge-m3) on first startup. For high-traffic deployments the local model can become a bottleneck on serial embedding calls; in that case switch to any OpenAI-compatible API (real OpenAI, Azure OpenAI, Together, vLLM, LM Studio, Ollama) by changing one config field. See [Embedding Providers](#embedding-providers) below.
+
+All database tables and indexes are created automatically on first run. No manual setup required.
 
 <details>
 <summary><strong>Configuration Options</strong></summary>
@@ -135,8 +137,12 @@ All options have sensible defaults. Override via plugin config or environment va
 | `surreal.pass` | `SURREAL_PASS` | (required) |
 | `surreal.ns` | `SURREAL_NS` | `kong` |
 | `surreal.db` | `SURREAL_DB` | `memory` |
-| `embedding.modelPath` | `KONGBRAIN_EMBEDDING_MODEL` | Auto-downloaded BGE-M3 Q4_K_M |
+| `embedding.provider` | `KONGBRAIN_EMBED_PROVIDER` | `local` (or `openai-compat`) |
 | `embedding.dimensions` | - | `1024` |
+| `embedding.modelPath` | `EMBED_MODEL_PATH` | Auto-downloaded BGE-M3 Q4_K_M |
+| `embedding.openaiCompat.model` | - | `text-embedding-3-small` |
+| `embedding.openaiCompat.baseURL` | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
+| `embedding.openaiCompat.apiKeyEnv` | - | `OPENAI_API_KEY` |
 
 Full config example:
 
@@ -165,6 +171,50 @@ Full config example:
 ```
 
 </details>
+
+### Embedding Providers
+
+| | `local` (default) | `openai-compat` |
+|---|---|---|
+| **Inference** | BGE-M3 GGUF via node-llama-cpp, in-process | HTTP POST to `/v1/embeddings` |
+| **Cost** | Zero (~420MB model on disk, CPU inference) | Per-token API charges |
+| **Throughput** | Serial; bottlenecks under high turn volume | High parallelism, batched at 96 inputs/request |
+| **Network** | None required | Required |
+| **Compatible servers** | n/a | OpenAI, Azure OpenAI, Together, Anyscale, vLLM, LM Studio, Ollama, DeepInfra, Fireworks |
+
+Switching providers is safe by design. Every embedding written to the database is tagged with the provider that produced it (`embedding_provider` column). At search time, KongBrain only compares vectors that were produced by the active provider — vectors from a different provider live in a different vector space and would corrupt similarity scores if mixed.
+
+When you switch from `local` to `openai-compat`, pre-existing rows stay in the database but become invisible to recall until re-embedded. Run the included migration tool to bring them into the new vector space:
+
+```bash
+# Estimate cost first (no writes)
+npx kongbrain-reembed --from local-bge-m3 --dry-run
+
+# Then run for real (resumable on interruption)
+npx kongbrain-reembed --from local-bge-m3
+```
+
+Cost is small: text-embedding-3-small is $0.02 per 1M tokens; a typical 3,400-turn database costs ~$0.04 to re-embed.
+
+#### Switching to OpenAI
+
+```bash
+export KONGBRAIN_EMBED_PROVIDER=openai-compat
+export OPENAI_API_KEY=sk-...
+# Restart the plugin. Migration tool handles existing data.
+```
+
+#### Switching to a local OpenAI-compatible server (Ollama, vLLM, LM Studio)
+
+```bash
+# Ollama example — runs entirely locally, no API key needed
+ollama pull nomic-embed-text
+export OPENAI_BASE_URL=http://localhost:11434/v1
+export OPENAI_API_KEY=ollama  # any non-empty string; Ollama doesn't validate
+export KONGBRAIN_EMBED_PROVIDER=openai-compat
+```
+
+Set `embedding.dimensions` to match the server's native output dim. KongBrain verifies the returned vector size on every response and fails loudly if the server ignores the `dimensions` parameter — preventing silently corrupted indexes.
 
 ---
 
