@@ -2,6 +2,32 @@
 
 All notable changes to KongBrain are documented here.
 
+## [0.5.0] - 2026-04-25
+
+Configurable embedding providers. Closes #1.
+
+### Features
+- **Configurable embedding provider**: New `embedding.provider` config field. Options: `local` (BGE-M3 via node-llama-cpp, default and unchanged) or `openai-compat` (any OpenAI-compatible `/v1/embeddings` endpoint — OpenAI, Azure OpenAI, Together, Anyscale, vLLM, LM Studio, Ollama, DeepInfra, Fireworks).
+- **OpenAI-compatible provider**: `fetch`-based, no SDK dependency. Batches inputs at 96/request, retries 429 + 5xx with exponential backoff and `Retry-After` honoring, hard-fails on 401/403/404 and `insufficient_quota` with clear error messages, verifies returned dimensionality matches config.
+- **Per-row provider tagging**: Every vector-bearing table (`turn`, `concept`, `memory`, `artifact`, `identity_chunk`, `skill`, `reflection`, `monologue`) gets an `embedding_provider` column. Searches filter by the active provider so vectors from different models (different vector spaces) never mix in HNSW results.
+- **Re-embed migration tool**: `npx kongbrain-reembed --from <provider-id> [--dry-run] [--tables …] [--batch …]`. Resumable on interruption (the WHERE filter naturally excludes processed rows). Reports per-table progress and estimated cost.
+- **Startup mismatch warning**: Logs a clear notice (with row counts and migration command) when the configured provider does not match what is in the database.
+- **Provider env overrides**: `KONGBRAIN_EMBED_PROVIDER` flips provider without editing config; `OPENAI_BASE_URL` overrides endpoint (matches the official OpenAI SDK convention); `embedding.openaiCompat.apiKeyEnv` names the env var holding the secret so keys never appear in config files.
+- **Plugin manifest**: `openclaw.plugin.json` extended with `provider` / `dimensions` / `openaiCompat` schema and uiHints with inline help text.
+
+### Infrastructure
+- **Idempotent schema migration + backfill**: All schema additions use `IF NOT EXISTS`. On first startup with this version, existing rows are tagged with `local-bge-m3`. Runs cleanly on every subsequent startup as a no-op.
+
+### Tests
+- 439 → 469 tests. New: 17 OpenAI provider unit tests (success, batching, dim mismatch, retry, hard-fail), 4 config tests (provider, env overrides, fallback), 8 migration tests (full migrate, table filter, dry-run, blank-text, multi-batch, refusal, no-op, format), 4 backfill upgrade-path integration tests, plus 6 gated live tests (real OpenAI / real DB / real reembed) that skip in CI.
+
+### Documentation
+- README and README.npm updated with embedding-provider comparison table, switching instructions for OpenAI / Ollama / vLLM, and migration command.
+
+### Upgrade notes
+- **No action required for existing local BGE-M3 deployments.** The schema migration adds the new column and tags all existing rows as `local-bge-m3`. Search continues to work identically.
+- **To switch providers**: set `embedding.provider: "openai-compat"` and `OPENAI_API_KEY`. On restart you will see a warning about rows in the old vector space. Run `npx kongbrain-reembed --from local-bge-m3 --dry-run` to estimate cost (~$0.04 per ~3,400 turns on text-embedding-3-small), then drop `--dry-run` to migrate. Resumable if interrupted.
+
 ## [0.4.4] - 2026-04-04
 
 ### Performance
