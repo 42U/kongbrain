@@ -165,12 +165,22 @@ export class OpenAICompatEmbeddingService implements EmbeddingService {
       }
 
       // 429 (rate limit) and 5xx — retry with backoff. Honor Retry-After
-      // when present.
+      // when present. Note: OpenAI returns HTTP 429 for both transient
+      // rate limits and "out of credits" (insufficient_quota) — the
+      // latter is not retryable, so peek at the body and fail fast.
       if (res.status === 429 || res.status >= 500) {
+        const text = await readBodyText(res);
+        if (res.status === 429 && /insufficient_quota/i.test(text)) {
+          throw new Error(
+            `OpenAI-compat embeddings: insufficient quota on this API key. ` +
+              `Add credits / a payment method at the provider's billing page, or switch keys. ` +
+              `Response: ${text.slice(0, 200)}`,
+          );
+        }
         const retryAfter = parseRetryAfter(res.headers.get("retry-after"));
         const wait = retryAfter ?? backoffMs(attempt);
         log.warn(`[embeddings:openai] ${res.status} from ${url}, retrying in ${wait}ms (attempt ${attempt}/${maxAttempts})`);
-        lastErr = new Error(`HTTP ${res.status}`);
+        lastErr = new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
         await this.sleep(wait);
         continue;
       }
