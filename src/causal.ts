@@ -127,9 +127,12 @@ export async function queryCausalContext(
   const seen = new Set<string>(validIds);
   let frontier = validIds;
   const results: VectorSearchResult[] = [];
-  const bindings = { vec: queryVec };
+  // Score only against rows in the active provider's vector space; rows from
+  // other providers still appear via graph traversal but score 0.
+  const bindings = { vec: queryVec, provider: store.getActiveProvider() };
 
   const scoreExpr = `, IF embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
          THEN vector::similarity::cosine(embedding, $vec)
          ELSE 0 END AS score`;
 

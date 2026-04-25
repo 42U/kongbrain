@@ -317,6 +317,10 @@ export default definePluginEntry({
     if (!globalState) {
       const store = new SurrealStore(config.surreal);
       const embeddings = createEmbeddingService(config.embedding);
+      // Tag every embedding write and filter every embedding search by this
+      // provider id, so vectors from different models (different vector
+      // spaces) never mix in the same HNSW result set.
+      store.setActiveProvider(embeddings.providerId);
       // Build a CompleteFn using pi-ai directly since api.runtime.complete
       // is not available in OpenClaw 2026.3.24 (unreleased feature).
       const apiRef = api;

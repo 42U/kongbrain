@@ -350,7 +350,7 @@ export async function writeExtractionResults(
                 trigger_context: String(s.trigger_context ?? "").slice(0, 200),
                 tags: ["auto-extracted"],
                 session_id: sessionId,
-                ...(emb ? { embedding: emb } : {}),
+                ...(emb ? { embedding: emb, embedding_provider: embeddings.providerId } : {}),
               },
             },
           );
