@@ -141,6 +141,27 @@ describe("OpenAICompatEmbeddingService", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("hard-fails on 429 insufficient_quota without retrying", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "You exceeded your current quota",
+            type: "insufficient_quota",
+            code: "insufficient_quota",
+          },
+        }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    (globalThis as any).fetch = fetchMock;
+
+    const svc = new OpenAICompatEmbeddingService(makeConfig());
+    await svc.initialize();
+    await expect(svc.embed("hello")).rejects.toThrow(/insufficient quota/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("retries on 429 and succeeds on the second attempt", async () => {
     const fetchMock = vi
       .fn()
