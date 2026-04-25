@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import type { EmbeddingConfig } from "./config.js";
+import { OpenAICompatEmbeddingService } from "./embeddings-openai.js";
 import { swallow } from "./errors.js";
 import { log } from "./log.js";
 
@@ -114,5 +115,12 @@ export class LocalEmbeddingService implements EmbeddingService {
 
 /** Construct the configured embedding service. Adding a new provider plugs in here. */
 export function createEmbeddingService(config: EmbeddingConfig): EmbeddingService {
+  if (config.provider === "openai-compat") {
+    // Lazy import keeps the local-only deployment path from paying the cost
+    // of parsing the OpenAI module on startup.
+    const { OpenAICompatEmbeddingService } = require("./embeddings-openai.js") as
+      typeof import("./embeddings-openai.js");
+    return new OpenAICompatEmbeddingService(config);
+  }
   return new LocalEmbeddingService(config);
 }
