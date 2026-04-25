@@ -24,6 +24,9 @@
     "knowledge-graph",
     "llm"
   ],
+  "bin": {
+    "kongbrain-reembed": "./bin/kongbrain-reembed.ts"
+  },
   "openclaw": {
     "extensions": [
       "./src/index.ts"
