@@ -108,9 +108,10 @@ export async function linkToRelevantConcepts(
       `SELECT id, vector::similarity::cosine(embedding, $vec) AS score
        FROM concept
        WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC
        LIMIT $lim`,
-      { vec, lim: limit },
+      { vec, lim: limit, provider: embeddings.providerId },
     );
     for (const m of matches) {
       if (m.score < threshold) break;
@@ -175,9 +176,10 @@ export async function linkConceptHierarchy(
              FROM concept
              WHERE id != $cid
                AND embedding != NONE AND array::len(embedding) > 0
+               AND embedding_provider = $provider
              ORDER BY score DESC
              LIMIT 3`,
-            { vec: conceptEmb, cid: conceptId },
+            { vec: conceptEmb, cid: conceptId, provider: embeddings.providerId },
           );
           for (const s of similar) {
             if (s.score < 0.75) break;

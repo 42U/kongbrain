@@ -146,6 +146,7 @@ export async function seedCognitiveBootstrap(
               chunk_index: i,
               text: chunk.text,
               embedding: vec,
+              embedding_provider: embeddings.providerId,
               importance: chunk.importance,
             },
           });

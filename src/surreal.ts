@@ -125,10 +125,27 @@ export class SurrealStore {
   private reconnecting: Promise<void> | null = null;
   private shutdownFlag = false;
   private initialized = false;
+  /**
+   * The embedding provider tag used to stamp writes and filter searches.
+   * Set once at startup via setActiveProvider() after the EmbeddingService
+   * is constructed. Falls back to "local-bge-m3" so existing single-provider
+   * deployments keep working if the wire-up step is ever skipped.
+   */
+  private activeProvider: string = "local-bge-m3";
 
   constructor(config: SurrealConfig) {
     this.config = config;
     this.db = new Surreal();
+  }
+
+  /** Set the embedding provider id used to stamp writes and filter searches. */
+  setActiveProvider(providerId: string): void {
+    this.activeProvider = providerId;
+  }
+
+  /** Get the active provider id (for callers writing records via direct CREATE). */
+  getActiveProvider(): string {
+    return this.activeProvider;
   }
 
   /** Connect and run schema. Returns true if a new connection was made, false if already initialized. */
@@ -361,46 +378,55 @@ export class SurrealStore {
     const crossTurnLim = lim.turn - sessionTurnLim;
     const emb = withEmbeddings ? ", embedding" : "";
 
-    // Batch all 7 vector searches into a single round-trip (limits inlined — per-table)
+    // Batch all 7 vector searches into a single round-trip (limits inlined — per-table).
+    // Each query filters by embedding_provider so vectors from different
+    // models never mix in the same result set (different vector spaces).
     const stmts = [
       `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM turn WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
          AND session_id = $sid ORDER BY score DESC LIMIT ${sessionTurnLim}`,
       `SELECT id, text, role, timestamp, 0 AS accessCount, 'turn' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM turn WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
          AND session_id != $sid ORDER BY score DESC LIMIT ${crossTurnLim}`,
       `SELECT id, content AS text, stability AS importance, access_count AS accessCount,
               created_at AS timestamp, 'concept' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM concept WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT ${lim.concept}`,
       `SELECT id, text, importance, access_count AS accessCount,
               created_at AS timestamp, session_id AS sessionId, 'memory' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM memory WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
          AND (status = 'active' OR status IS NONE) ORDER BY score DESC LIMIT ${lim.memory}`,
       `SELECT id, description AS text, 0 AS accessCount,
               created_at AS timestamp, 'artifact' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM artifact WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT ${lim.artifact}`,
       `SELECT id, content AS text, category AS source, 0.5 AS importance, 0 AS accessCount,
               timestamp, 'monologue' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM monologue WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT ${lim.monologue}`,
       `SELECT id, text, importance, 0 AS accessCount,
               'identity_chunk' AS table,
               vector::similarity::cosine(embedding, $vec) AS score${emb}
        FROM identity_chunk WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT ${lim.identity}`,
     ];
 
     let batchResults: any[][];
     try {
-      batchResults = await this.queryBatch<any>(stmts, { vec, sid: sessionId });
+      batchResults = await this.queryBatch<any>(stmts, { vec, sid: sessionId, provider: this.activeProvider });
     } catch (e) {
       swallow.warn("surreal:vectorSearch:batch", e);
       return [];
@@ -422,7 +448,9 @@ export class SurrealStore {
 
   async upsertTurn(turn: TurnRecord): Promise<string> {
     const { embedding, ...rest } = turn;
-    const record = embedding?.length ? { ...rest, embedding } : rest;
+    const record = embedding?.length
+      ? { ...rest, embedding, embedding_provider: this.activeProvider }
+      : rest;
     const rows = await this.queryFirst<{ id: string }>(
       `CREATE turn CONTENT $turn RETURN id`,
       { turn: record },
@@ -620,10 +648,11 @@ export class SurrealStore {
                 vector::similarity::cosine(embedding, $vec) AS score
          FROM concept
          WHERE embedding != NONE AND array::len(embedding) > 0
+           AND embedding_provider = $provider
            AND (${tagConditions})
          ORDER BY score DESC
          LIMIT $limit`,
-        { vec: queryVec, limit },
+        { vec: queryVec, limit, provider: this.activeProvider },
       );
       return rows as VectorSearchResult[];
     } catch (e) {
@@ -659,9 +688,13 @@ export class SurrealStore {
       "produced", "derived_from", "performed", "owns",
     ];
 
+    // Graph traversal returns nodes regardless of provider (the edges
+    // are still meaningful for structure), but the cosine score only
+    // applies to vectors in the active provider's space — others get
+    // score 0 so they sort below current-space matches.
     const scoreExpr =
-      ", IF embedding != NONE AND array::len(embedding) > 0 THEN vector::similarity::cosine(embedding, $vec) ELSE 0 END AS score";
-    const bindings = { vec: queryVec };
+      ", IF embedding != NONE AND array::len(embedding) > 0 AND embedding_provider = $provider THEN vector::similarity::cosine(embedding, $vec) ELSE 0 END AS score";
+    const bindings = { vec: queryVec, provider: this.activeProvider };
     const selectFields = `SELECT id, text, content, description, importance, stability,
                   access_count AS accessCount, created_at AS timestamp,
                   meta::tb(id) AS table${scoreExpr}`;
@@ -752,11 +785,15 @@ export class SurrealStore {
     );
     if (rows.length > 0) {
       const id = String(rows[0].id);
-      // Backfill embedding if the existing concept is missing one
+      // Backfill embedding if the existing concept is missing one. The
+      // backfilled embedding is tagged with the active provider so it can be
+      // searched alongside other current-provider rows.
       if (embedding?.length) {
         await this.queryExec(
-          `UPDATE ${id} SET access_count += 1, last_accessed = time::now(), embedding = IF embedding IS NONE OR array::len(embedding) = 0 THEN $emb ELSE embedding END`,
-          { emb: embedding },
+          `UPDATE ${id} SET access_count += 1, last_accessed = time::now(),
+            embedding = IF embedding IS NONE OR array::len(embedding) = 0 THEN $emb ELSE embedding END,
+            embedding_provider = IF embedding IS NONE OR array::len(embedding) = 0 THEN $provider ELSE embedding_provider END`,
+          { emb: embedding, provider: this.activeProvider },
         );
       } else {
         await this.queryExec(
@@ -767,7 +804,10 @@ export class SurrealStore {
     }
     const emb = embedding?.length ? embedding : undefined;
     const record: Record<string, unknown> = { content, source: source ?? undefined };
-    if (emb) record.embedding = emb;
+    if (emb) {
+      record.embedding = emb;
+      record.embedding_provider = this.activeProvider;
+    }
     const created = await this.queryFirst<{ id: string }>(
       `CREATE concept CONTENT $record RETURN id`,
       { record },
@@ -782,7 +822,10 @@ export class SurrealStore {
     embedding: number[] | null,
   ): Promise<string> {
     const record: Record<string, unknown> = { path, type, description };
-    if (embedding?.length) record.embedding = embedding;
+    if (embedding?.length) {
+      record.embedding = embedding;
+      record.embedding_provider = this.activeProvider;
+    }
     const rows = await this.queryFirst<{ id: string }>(
       `CREATE artifact CONTENT $record RETURN id`,
       { record },
@@ -800,6 +843,8 @@ export class SurrealStore {
     const source = category ?? "general";
 
     if (embedding?.length) {
+      // Dedup search must filter by provider — same vector value in a different
+      // space is meaningless and would produce false-positive merges.
       const dupes = await this.queryFirst<{
         id: string;
         importance: number;
@@ -809,10 +854,11 @@ export class SurrealStore {
                 vector::similarity::cosine(embedding, $vec) AS score
          FROM memory
          WHERE embedding != NONE AND array::len(embedding) > 0
+           AND embedding_provider = $provider
            AND category = $cat
          ORDER BY score DESC
          LIMIT 1`,
-        { vec: embedding, cat: source },
+        { vec: embedding, cat: source, provider: this.activeProvider },
       );
       if (dupes.length > 0 && dupes[0].score > 0.92) {
         const existing = dupes[0];
@@ -826,7 +872,10 @@ export class SurrealStore {
     }
 
     const record: Record<string, unknown> = { text, importance, category: source, source };
-    if (embedding?.length) record.embedding = embedding;
+    if (embedding?.length) {
+      record.embedding = embedding;
+      record.embedding_provider = this.activeProvider;
+    }
     if (sessionId) record.session_id = sessionId;
     const rows = await this.queryFirst<{ id: string }>(
       `CREATE memory CONTENT $record RETURN id`,
@@ -842,7 +891,10 @@ export class SurrealStore {
     embedding: number[] | null,
   ): Promise<string> {
     const record: Record<string, unknown> = { session_id: sessionId, category, content };
-    if (embedding?.length) record.embedding = embedding;
+    if (embedding?.length) {
+      record.embedding = embedding;
+      record.embedding_provider = this.activeProvider;
+    }
     const rows = await this.queryFirst<{ id: string }>(
       `CREATE monologue CONTENT $record RETURN id`,
       { record },
@@ -1224,7 +1276,8 @@ export class SurrealStore {
       let merged = 0;
       const seen = new Set<string>();
 
-      // Pass 1: Vector similarity dedup
+      // Pass 1: Vector similarity dedup. Restrict to current provider so we
+      // don't compare vectors across spaces.
       const embMemories = await this.queryFirst<{
         id: string;
         text: string;
@@ -1236,8 +1289,10 @@ export class SurrealStore {
         `SELECT id, text, importance, category, access_count, embedding, created_at
          FROM memory
          WHERE embedding != NONE AND array::len(embedding) > 0
+           AND embedding_provider = $provider
          ORDER BY created_at ASC
          LIMIT 50`,
+        { provider: this.activeProvider },
       );
 
       for (const mem of embMemories) {
@@ -1255,9 +1310,10 @@ export class SurrealStore {
            WHERE id != $mid
              AND category = $cat
              AND embedding != NONE AND array::len(embedding) > 0
+             AND embedding_provider = $provider
            ORDER BY score DESC
            LIMIT 3`,
-          { vec: mem.embedding, mid: mem.id, cat: mem.category },
+          { vec: mem.embedding, mid: mem.id, cat: mem.category, provider: this.activeProvider },
         );
 
         for (const dupe of dupes) {
@@ -1300,9 +1356,10 @@ export class SurrealStore {
         try {
           const emb = await embedFn(mem.text);
           if (!emb) continue;
+          // Backfilled embedding is in the active provider's space, so tag it.
           await this.queryExec(
-            `UPDATE ${String(mem.id)} SET embedding = $emb`,
-            { emb },
+            `UPDATE ${String(mem.id)} SET embedding = $emb, embedding_provider = $provider`,
+            { emb, provider: this.activeProvider },
           );
 
           const dupes = await this.queryFirst<{
@@ -1317,9 +1374,10 @@ export class SurrealStore {
              WHERE id != $mid
                AND category = $cat
                AND embedding != NONE AND array::len(embedding) > 0
+               AND embedding_provider = $provider
              ORDER BY score DESC
              LIMIT 3`,
-            { vec: emb, mid: mem.id, cat: mem.category },
+            { vec: emb, mid: mem.id, cat: mem.category, provider: this.activeProvider },
           );
           for (const dupe of dupes) {
             if (dupe.score < 0.88) break;

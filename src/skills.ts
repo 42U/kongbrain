@@ -127,7 +127,10 @@ export async function extractSkill(
       confidence: 1.0,
       active: true,
     };
-    if (skillEmb?.length) record.embedding = skillEmb;
+    if (skillEmb?.length) {
+      record.embedding = skillEmb;
+      record.embedding_provider = embeddings.providerId;
+    }
 
     const rows = await store.queryFirst<{ id: string }>(
       `CREATE skill CONTENT $record RETURN id`,
@@ -170,8 +173,9 @@ export async function supersedeOldSkills(
        WHERE id != $sid
          AND (active = NONE OR active = true)
          AND embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT 5`,
-      { vec: newEmb, sid: newSkillId },
+      { vec: newEmb, sid: newSkillId, provider: store.getActiveProvider() },
     );
     for (const row of rows) {
       if ((row.score ?? 0) >= 0.82) {
@@ -204,9 +208,11 @@ export async function findRelevantSkills(
               avg_duration_ms AS avgDurationMs,
               vector::similarity::cosine(embedding, $vec) AS score
        FROM skill
-       WHERE embedding != NONE AND array::len(embedding) > 0 AND (active = NONE OR active = true)
+       WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
+         AND (active = NONE OR active = true)
        ORDER BY score DESC LIMIT $lim`,
-      { vec: queryVec, lim: limit },
+      { vec: queryVec, lim: limit, provider: store.getActiveProvider() },
     );
 
     return rows
@@ -345,7 +351,10 @@ export async function graduateCausalToSkills(
         confidence: 1.0,
         active: true,
       };
-      if (skillEmb?.length) record.embedding = skillEmb;
+      if (skillEmb?.length) {
+        record.embedding = skillEmb;
+        record.embedding_provider = embeddings.providerId;
+      }
 
       const rows = await store.queryFirst<{ id: string }>(
         `CREATE skill CONTENT $record RETURN id`,
