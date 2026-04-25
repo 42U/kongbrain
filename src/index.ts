@@ -299,10 +299,44 @@ async function detectGraduationEvent(
   }
 }
 
+/**
+ * Detect rows tagged with a provider other than the one currently active.
+ * Pre-existing data stays in the database; PR-B's search-time filter keeps
+ * it from corrupting recall, but it becomes invisible until re-embedded.
+ * Logging gives the user a clear cue that a migration is needed without
+ * refusing to start (the data is intact and reads remain safe).
+ */
+async function checkEmbeddingProviderMismatch(
+  store: SurrealStore,
+  activeProvider: string,
+  logger: { warn: (msg: string) => void },
+): Promise<void> {
+  if (!store.isAvailable()) return;
+  const tables = ["turn", "concept", "memory", "artifact", "identity_chunk", "skill", "reflection", "monologue"];
+  let mismatched = 0;
+  for (const t of tables) {
+    try {
+      const rows = await store.queryFirst<{ count: number }>(
+        `SELECT count() AS count FROM ${t} WHERE embedding != NONE AND embedding_provider != $provider GROUP ALL`,
+        { provider: activeProvider },
+      );
+      mismatched += Number(rows[0]?.count ?? 0);
+    } catch (e) {
+      swallow.warn(`factory:providerMismatchCount:${t}`, e);
+    }
+  }
+  if (mismatched > 0) {
+    logger.warn(
+      `Embedding provider mismatch: ${mismatched} rows in the database were embedded by a different provider than the active one (${activeProvider}). ` +
+        `These rows are filtered out of similarity search until re-embedded. To migrate, run the re-embed tool (PR-D, coming soon) or revert the embedding.provider config.`,
+    );
+  }
+}
+
 export default definePluginEntry({
   id: "kongbrain",
   name: "KongBrain",
-  description: "Graph-backed cognitive context engine with SurrealDB persistence and BGE-M3 embeddings.",
+  description: "Graph-backed cognitive context engine with SurrealDB persistence and pluggable embeddings (local BGE-M3 or OpenAI-compatible).",
   kind: "context-engine",
 
   register(api) {
@@ -423,10 +457,21 @@ export default definePluginEntry({
         throw e;
       }
 
-      // Initialize BGE-M3 embeddings (no-op if already loaded)
+      // Initialize the embedding provider (no-op if already loaded)
       try {
         const freshEmbed = await embeddings.initialize();
-        if (freshEmbed) logger.info(`BGE-M3 embeddings initialized: ${config.embedding.modelPath}`);
+        if (freshEmbed) {
+          const detail = config.embedding.provider === "openai-compat"
+            ? `${config.embedding.openaiCompat.baseURL} (${config.embedding.openaiCompat.model})`
+            : config.embedding.modelPath;
+          logger.info(`Embeddings initialized [${embeddings.providerId}]: ${detail}`);
+          // One-time check: warn if the DB has rows tagged with a different
+          // provider. PR-B's search-time filter prevents silent corruption,
+          // but those rows are now invisible to recall until they're
+          // re-embedded with the active provider.
+          checkEmbeddingProviderMismatch(store, embeddings.providerId, logger)
+            .catch(e => swallow.warn("factory:providerMismatchCheck", e));
+        }
       } catch (e) {
         logger.warn(`Embeddings init failed — running in degraded mode: ${e}`);
       }
