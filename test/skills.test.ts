@@ -19,6 +19,7 @@ import {
 function mockStore() {
   return {
     isAvailable: () => true,
+    getActiveProvider: () => "local-bge-m3",
     getSessionTurns: vi.fn(async () => [
       { role: "user", text: "fix the bug in auth.ts" },
       { role: "assistant", text: "I'll look at it" },

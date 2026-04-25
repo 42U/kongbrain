@@ -179,15 +179,17 @@ export async function generateReflection(
       try { reflEmb = await embeddings.embed(reflectionText); } catch (e) { swallow("reflection:ok", e); }
     }
 
-    // Dedup: skip if a very similar reflection already exists
+    // Dedup: skip if a very similar reflection already exists. Filter by
+    // provider so we don't dedup against vectors in a different space.
     if (reflEmb?.length) {
       const existing = await store.queryFirst<{ id: string; importance: number; score: number }>(
         `SELECT id, importance,
                 vector::similarity::cosine(embedding, $vec) AS score
          FROM reflection
          WHERE embedding != NONE AND array::len(embedding) > 0
+           AND embedding_provider = $provider
          ORDER BY score DESC LIMIT 1`,
-        { vec: reflEmb },
+        { vec: reflEmb, provider: embeddings.providerId },
       );
       const top = existing[0];
       if (top && typeof top.score === "number" && top.score > 0.85) {
@@ -207,7 +209,10 @@ export async function generateReflection(
       severity,
       importance: 7.0,
     };
-    if (reflEmb?.length) record.embedding = reflEmb;
+    if (reflEmb?.length) {
+      record.embedding = reflEmb;
+      record.embedding_provider = embeddings.providerId;
+    }
 
     const rows = await store.queryFirst<{ id: string }>(
       `CREATE reflection CONTENT $record RETURN id`,
@@ -242,8 +247,9 @@ export async function retrieveReflections(
               vector::similarity::cosine(embedding, $vec) AS score
        FROM reflection
        WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
        ORDER BY score DESC LIMIT $lim`,
-      { vec: queryVec, lim: limit },
+      { vec: queryVec, lim: limit, provider: store.getActiveProvider() },
     );
 
     return rows

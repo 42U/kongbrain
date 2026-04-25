@@ -61,11 +61,12 @@ export async function linkSupersedesEdges(
       `SELECT id, vector::similarity::cosine(embedding, $vec) AS score, stability
        FROM concept
        WHERE embedding != NONE AND array::len(embedding) > 0
+         AND embedding_provider = $provider
          AND superseded_at IS NONE
          AND stability > $floor
        ORDER BY score DESC
        LIMIT 5`,
-      { vec: originalVec, floor: STABILITY_FLOOR },
+      { vec: originalVec, floor: STABILITY_FLOOR, provider: embeddings.providerId },
     );
 
     for (const candidate of candidates) {

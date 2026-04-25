@@ -39,10 +39,12 @@ DEFINE FIELD IF NOT EXISTS type ON artifact TYPE string;
 DEFINE FIELD IF NOT EXISTS description ON artifact TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS content_hash ON artifact TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS embedding ON artifact TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON artifact TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS tags ON artifact TYPE option<array>;
 DEFINE FIELD IF NOT EXISTS created_at ON artifact TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS artifact_vec_idx ON artifact FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS artifact_type_idx ON artifact FIELDS type;
+DEFINE INDEX IF NOT EXISTS artifact_emb_provider_idx ON artifact FIELDS embedding_provider;
 
 -- ============================================================
 -- PILLAR 5: Concept (semantic knowledge nodes)
@@ -52,6 +54,7 @@ DEFINE TABLE IF NOT EXISTS concept SCHEMALESS;
 UPDATE concept SET content = name WHERE content = NONE AND name != NONE;
 DEFINE FIELD IF NOT EXISTS content ON concept TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON concept TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON concept TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS stability ON concept TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS confidence ON concept TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS access_count ON concept TYPE int DEFAULT 0;
@@ -60,6 +63,7 @@ DEFINE FIELD IF NOT EXISTS source ON concept TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS created_at ON concept TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS last_accessed ON concept TYPE option<datetime>;
 DEFINE INDEX IF NOT EXISTS concept_vec_idx ON concept FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS concept_emb_provider_idx ON concept FIELDS embedding_provider;
 
 -- ============================================================
 -- Conversation turns (the workhorse table)
@@ -71,6 +75,7 @@ DEFINE FIELD IF NOT EXISTS text ON turn TYPE string;
 -- Migration: ensure embedding is optional (SurrealDB 3.0 HNSW requires this for nullable embeddings)
 REMOVE FIELD IF EXISTS embedding ON turn;
 DEFINE FIELD embedding ON turn TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON turn TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS timestamp ON turn TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS created_at ON turn TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS token_count ON turn TYPE option<int>;
@@ -80,6 +85,7 @@ DEFINE FIELD IF NOT EXISTS usage ON turn TYPE option<object>;
 DEFINE INDEX IF NOT EXISTS turn_vec_idx ON turn FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS turn_session_idx ON turn FIELDS session_id;
 DEFINE INDEX IF NOT EXISTS turn_tool_name_idx ON turn FIELDS tool_name;
+DEFINE INDEX IF NOT EXISTS turn_emb_provider_idx ON turn FIELDS embedding_provider;
 
 -- Identity chunks (agent persona / identity)
 DEFINE TABLE IF NOT EXISTS identity_chunk SCHEMALESS;
@@ -88,8 +94,10 @@ DEFINE FIELD IF NOT EXISTS source ON identity_chunk TYPE string;
 DEFINE FIELD IF NOT EXISTS chunk_index ON identity_chunk TYPE int;
 DEFINE FIELD IF NOT EXISTS text ON identity_chunk TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON identity_chunk TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON identity_chunk TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS importance ON identity_chunk TYPE float DEFAULT 0.5;
 DEFINE INDEX IF NOT EXISTS identity_vec_idx ON identity_chunk FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS identity_emb_provider_idx ON identity_chunk FIELDS embedding_provider;
 
 -- Sessions (lightweight, links to task for 5-pillar integration)
 DEFINE TABLE IF NOT EXISTS session SCHEMALESS;
@@ -106,6 +114,7 @@ DEFINE FIELD IF NOT EXISTS cleanup_completed ON session TYPE bool DEFAULT false;
 DEFINE TABLE IF NOT EXISTS memory SCHEMALESS;
 DEFINE FIELD IF NOT EXISTS text ON memory TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON memory TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON memory TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS importance ON memory TYPE float DEFAULT 0.5;
 DEFINE FIELD IF NOT EXISTS confidence ON memory TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS access_count ON memory TYPE int DEFAULT 0;
@@ -118,6 +127,7 @@ DEFINE FIELD IF NOT EXISTS resolved_at ON memory TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS resolved_by ON memory TYPE option<string>;
 DEFINE INDEX IF NOT EXISTS memory_vec_idx ON memory FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS memory_category_idx ON memory FIELDS category;
+DEFINE INDEX IF NOT EXISTS memory_emb_provider_idx ON memory FIELDS embedding_provider;
 
 -- ============================================================
 -- GRAPH EDGES: Turn-level
@@ -257,6 +267,7 @@ DEFINE TABLE IF NOT EXISTS skill SCHEMALESS;
 DEFINE FIELD IF NOT EXISTS name ON skill TYPE string;
 DEFINE FIELD IF NOT EXISTS description ON skill TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON skill TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON skill TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS preconditions ON skill TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS steps ON skill TYPE option<array>;
 DEFINE FIELD IF NOT EXISTS postconditions ON skill TYPE option<string>;
@@ -267,6 +278,7 @@ DEFINE FIELD IF NOT EXISTS last_used ON skill TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS created_at ON skill TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS skill_vec_idx ON skill FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
 DEFINE INDEX IF NOT EXISTS skill_active_idx ON skill FIELDS active;
+DEFINE INDEX IF NOT EXISTS skill_emb_provider_idx ON skill FIELDS embedding_provider;
 
 DEFINE TABLE IF NOT EXISTS skill_from_task TYPE RELATION IN skill OUT task;
 DEFINE TABLE IF NOT EXISTS skill_uses_concept TYPE RELATION IN skill OUT concept;
@@ -278,12 +290,14 @@ DEFINE TABLE IF NOT EXISTS reflection SCHEMALESS;
 DEFINE FIELD IF NOT EXISTS session_id ON reflection TYPE string;
 DEFINE FIELD IF NOT EXISTS text ON reflection TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON reflection TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON reflection TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS category ON reflection TYPE string DEFAULT "efficiency"; -- failure_pattern | efficiency | approach_strategy
 DEFINE FIELD IF NOT EXISTS severity ON reflection TYPE string DEFAULT "minor"; -- minor | moderate | critical
 DEFINE FIELD IF NOT EXISTS importance ON reflection TYPE float DEFAULT 7.0;
 DEFINE FIELD IF NOT EXISTS access_count ON reflection TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS created_at ON reflection TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS reflection_vec_idx ON reflection FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS reflection_emb_provider_idx ON reflection FIELDS embedding_provider;
 
 DEFINE TABLE IF NOT EXISTS reflects_on TYPE RELATION IN reflection OUT session;
 
@@ -329,10 +343,12 @@ DEFINE FIELD IF NOT EXISTS session_id ON monologue TYPE string;
 DEFINE FIELD IF NOT EXISTS category ON monologue TYPE string;
 DEFINE FIELD IF NOT EXISTS content ON monologue TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding ON monologue TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_provider ON monologue TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS timestamp ON monologue TYPE datetime DEFAULT time::now();
 DEFINE INDEX IF NOT EXISTS monologue_session ON monologue FIELDS session_id;
 DEFINE INDEX IF NOT EXISTS monologue_category ON monologue FIELDS category;
 DEFINE INDEX IF NOT EXISTS monologue_vec_idx ON monologue FIELDS embedding HNSW DIMENSION 1024 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS monologue_emb_provider_idx ON monologue FIELDS embedding_provider;
 
 -- Fibonacci resurfacing: proactive memory that fades over time
 -- Memories flagged as surfaceable get a next_surface_at timestamp.
@@ -384,3 +400,16 @@ DEFINE FIELD IF NOT EXISTS created_at ON graduation_event TYPE datetime DEFAULT 
 -- 768d → 1024d migration completed; REMOVE INDEX / UPDATE stale
 -- embeddings removed to avoid destroying live HNSW indexes on
 -- every startup.
+
+-- embedding_provider backfill: any existing row with an embedding but no
+-- provider tag was written by the original local BGE-M3 model. This is
+-- idempotent (the WHERE clause skips already-tagged rows) so it is safe
+-- to leave running on every startup.
+UPDATE turn           SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE concept        SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE memory         SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE artifact       SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE identity_chunk SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE skill          SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE reflection     SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
+UPDATE monologue      SET embedding_provider = "local-bge-m3" WHERE embedding != NONE AND embedding_provider = NONE;
