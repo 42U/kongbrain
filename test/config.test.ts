@@ -15,6 +15,8 @@ describe("parsePluginConfig", () => {
     delete process.env.SURREAL_NS;
     delete process.env.SURREAL_DB;
     delete process.env.EMBED_MODEL_PATH;
+    delete process.env.KONGBRAIN_EMBED_PROVIDER;
+    delete process.env.OPENAI_BASE_URL;
   });
 
   afterEach(() => {
@@ -28,10 +30,51 @@ describe("parsePluginConfig", () => {
     expect(config.surreal.pass).toBe("root");
     expect(config.surreal.ns).toBe("kong");
     expect(config.surreal.db).toBe("memory");
+    expect(config.embedding.provider).toBe("local");
     expect(config.embedding.dimensions).toBe(1024);
     expect(config.embedding.modelPath).toBe(
       join(homedir(), ".node-llama-cpp", "models", "bge-m3-q4_k_m.gguf"),
     );
+    expect(config.embedding.openaiCompat.model).toBe("text-embedding-3-small");
+    expect(config.embedding.openaiCompat.baseURL).toBe("https://api.openai.com/v1");
+    expect(config.embedding.openaiCompat.apiKeyEnv).toBe("OPENAI_API_KEY");
+  });
+
+  it("reads embedding provider from plugin config", () => {
+    const config = parsePluginConfig({
+      embedding: {
+        provider: "openai-compat",
+        dimensions: 1024,
+        openaiCompat: {
+          model: "text-embedding-3-large",
+          baseURL: "https://my-azure.openai.azure.com/v1",
+          apiKeyEnv: "AZURE_OPENAI_KEY",
+        },
+      },
+    });
+    expect(config.embedding.provider).toBe("openai-compat");
+    expect(config.embedding.openaiCompat.model).toBe("text-embedding-3-large");
+    expect(config.embedding.openaiCompat.baseURL).toBe("https://my-azure.openai.azure.com/v1");
+    expect(config.embedding.openaiCompat.apiKeyEnv).toBe("AZURE_OPENAI_KEY");
+  });
+
+  it("KONGBRAIN_EMBED_PROVIDER env var overrides plugin config", () => {
+    process.env.KONGBRAIN_EMBED_PROVIDER = "openai-compat";
+    const config = parsePluginConfig({ embedding: { provider: "local" } });
+    expect(config.embedding.provider).toBe("openai-compat");
+  });
+
+  it("OPENAI_BASE_URL env var overrides plugin config", () => {
+    process.env.OPENAI_BASE_URL = "http://localhost:11434/v1";
+    const config = parsePluginConfig({
+      embedding: { provider: "openai-compat", openaiCompat: { baseURL: "https://api.openai.com/v1" } },
+    });
+    expect(config.embedding.openaiCompat.baseURL).toBe("http://localhost:11434/v1");
+  });
+
+  it("falls back to local for unknown provider strings", () => {
+    const config = parsePluginConfig({ embedding: { provider: "anthropic" } });
+    expect(config.embedding.provider).toBe("local");
   });
 
   it("returns defaults with empty object", () => {

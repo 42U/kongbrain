@@ -1,7 +1,7 @@
 {
   "id": "kongbrain",
   "name": "KongBrain",
-  "description": "Graph-backed cognitive context engine with SurrealDB + BGE-M3",
+  "description": "Graph-backed cognitive context engine with SurrealDB + pluggable embeddings (local BGE-M3 or OpenAI-compatible)",
   "kind": "context-engine",
   "requires": {
     "bins": ["surreal"],
@@ -30,16 +30,36 @@
       "label": "SurrealDB Database",
       "placeholder": "memory"
     },
-    "embedding.modelPath": {
-      "label": "Embedding Model Path",
-      "placeholder": "~/.node-llama-cpp/models/bge-m3-q4_k_m.gguf",
-      "help": "Path to BGE-M3 GGUF model file (~420MB, auto-downloaded if missing)",
-      "advanced": true
+    "embedding.provider": {
+      "label": "Embedding Provider",
+      "placeholder": "local",
+      "help": "Either 'local' (BGE-M3 via node-llama-cpp) or 'openai-compat' (any OpenAI-compatible /v1/embeddings endpoint: OpenAI, Azure, Together, vLLM, Ollama, etc.)"
     },
     "embedding.dimensions": {
       "label": "Embedding Dimensions",
       "placeholder": "1024",
+      "help": "Output vector dimensionality. Must match across providers if you intend to swap them. text-embedding-3-* honors arbitrary values; non-OpenAI compat servers may return their native dim regardless."
+    },
+    "embedding.modelPath": {
+      "label": "Local Model Path",
+      "placeholder": "~/.node-llama-cpp/models/bge-m3-q4_k_m.gguf",
+      "help": "Path to BGE-M3 GGUF file. Only used when provider is 'local'.",
       "advanced": true
+    },
+    "embedding.openaiCompat.model": {
+      "label": "OpenAI-compat Model",
+      "placeholder": "text-embedding-3-small",
+      "help": "Model name passed in the embeddings request body. Only used when provider is 'openai-compat'."
+    },
+    "embedding.openaiCompat.baseURL": {
+      "label": "OpenAI-compat Base URL",
+      "placeholder": "https://api.openai.com/v1",
+      "help": "Endpoint base. The OPENAI_BASE_URL env var overrides this if set. Only used when provider is 'openai-compat'."
+    },
+    "embedding.openaiCompat.apiKeyEnv": {
+      "label": "API Key Env Var",
+      "placeholder": "OPENAI_API_KEY",
+      "help": "Name of the env var holding the API key (the secret stays out of config files). Only used when provider is 'openai-compat'."
     }
   },
   "configSchema": {
@@ -61,8 +81,18 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "provider": { "type": "string", "enum": ["local", "openai-compat"] },
+          "dimensions": { "type": "number" },
           "modelPath": { "type": "string" },
-          "dimensions": { "type": "number" }
+          "openaiCompat": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "model": { "type": "string" },
+              "baseURL": { "type": "string" },
+              "apiKeyEnv": { "type": "string" }
+            }
+          }
         }
       }
     }
