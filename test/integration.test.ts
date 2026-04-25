@@ -299,6 +299,94 @@ describe("SurrealDB integration", () => {
     }
   });
 
+  // ── embedding_provider backfill (PR-B upgrade path) ──
+
+  itDb("embedding_provider backfill tags pre-existing rows on first startup", async () => {
+    // Simulate a v0.4.4 deployment: a row with an embedding but no
+    // embedding_provider field. This is exactly what every existing
+    // turn/concept/memory/etc. row looks like before this migration runs.
+    await store.queryExec(
+      `CREATE memory CONTENT { text: "pre-existing row", importance: 5,
+                               embedding: array::repeat(0.1, 1024),
+                               embedding_provider: NONE }`,
+    );
+    // Sanity: the row is unagged before backfill.
+    const before = await store.queryFirst<{ embedding_provider: string | null }>(
+      `SELECT embedding_provider FROM memory WHERE text = "pre-existing row"`,
+    );
+    expect(before[0]?.embedding_provider ?? null).toBeNull();
+
+    // Run the same backfill statement the schema runs at startup.
+    await store.queryExec(
+      `UPDATE memory SET embedding_provider = "local-bge-m3"
+        WHERE embedding != NONE AND embedding_provider = NONE`,
+    );
+
+    // After backfill, the row should be tagged.
+    const after = await store.queryFirst<{ embedding_provider: string }>(
+      `SELECT embedding_provider FROM memory WHERE text = "pre-existing row"`,
+    );
+    expect(after[0]?.embedding_provider).toBe("local-bge-m3");
+  });
+
+  itDb("embedding_provider backfill never overwrites an already-tagged row", async () => {
+    // A row that already carries a custom provider tag (e.g. someone who
+    // ran the migration tool with a non-default provider id).
+    await store.queryExec(
+      `CREATE memory CONTENT { text: "custom-tagged row", importance: 5,
+                               embedding: array::repeat(0.5, 1024),
+                               embedding_provider: "custom-provider-xyz" }`,
+    );
+    await store.queryExec(
+      `UPDATE memory SET embedding_provider = "local-bge-m3"
+        WHERE embedding != NONE AND embedding_provider = NONE`,
+    );
+
+    const after = await store.queryFirst<{ embedding_provider: string }>(
+      `SELECT embedding_provider FROM memory WHERE text = "custom-tagged row"`,
+    );
+    expect(after[0]?.embedding_provider).toBe("custom-provider-xyz");
+  });
+
+  itDb("embedding_provider backfill is idempotent (re-runs are no-ops)", async () => {
+    await store.queryExec(
+      `CREATE memory CONTENT { text: "idempotent test row", importance: 5,
+                               embedding: array::repeat(0.1, 1024),
+                               embedding_provider: NONE }`,
+    );
+    // Run it three times. The second and third runs should not match
+    // anything (the WHERE clause excludes already-tagged rows).
+    for (let i = 0; i < 3; i++) {
+      await store.queryExec(
+        `UPDATE memory SET embedding_provider = "local-bge-m3"
+          WHERE embedding != NONE AND embedding_provider = NONE`,
+      );
+    }
+    const after = await store.queryFirst<{ embedding_provider: string }>(
+      `SELECT embedding_provider FROM memory WHERE text = "idempotent test row"`,
+    );
+    expect(after[0]?.embedding_provider).toBe("local-bge-m3");
+  });
+
+  itDb("embedding_provider backfill leaves embedding-less rows untagged", async () => {
+    // A row that has no embedding (e.g. early creation paths that defer
+    // embedding) shouldn't get falsely tagged — it has no vector, so the
+    // tag would be a lie.
+    await store.queryExec(
+      `CREATE memory CONTENT { text: "no-embedding row", importance: 5,
+                               embedding: NONE, embedding_provider: NONE }`,
+    );
+    await store.queryExec(
+      `UPDATE memory SET embedding_provider = "local-bge-m3"
+        WHERE embedding != NONE AND embedding_provider = NONE`,
+    );
+
+    const after = await store.queryFirst<{ embedding_provider: string | null }>(
+      `SELECT embedding_provider FROM memory WHERE text = "no-embedding row"`,
+    );
+    expect(after[0]?.embedding_provider ?? null).toBeNull();
+  });
+
   // ── Session lifecycle ──
 
   itDb("session create + mark ended round-trip", async () => {
