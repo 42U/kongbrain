@@ -12,6 +12,7 @@ import { parsePluginConfig } from "./config.js";
 import { SurrealStore } from "./surreal.js";
 import { createEmbeddingService } from "./embeddings.js";
 import { GlobalPluginState, type CompleteFn } from "./state.js";
+import { resolveModelRef } from "./model-resolution.js";
 import { KongBrainContextEngine } from "./context-engine.js";
 import { createRecallToolDef } from "./tools/recall.js";
 import { createCoreMemoryToolDef } from "./tools/core-memory.js";
@@ -349,7 +350,9 @@ export default definePluginEntry({
     // ensure a single instance survives across module reloads.
     let globalState = getGlobalState();
     if (!globalState) {
-      const store = new SurrealStore(config.surreal);
+      const store = new SurrealStore(config.surreal, {
+        embeddingDimensions: config.embedding.dimensions,
+      });
       const embeddings = createEmbeddingService(config.embedding);
       // Tag every embedding write and filter every embedding search by this
       // provider id, so vectors from different models (different vector
@@ -383,27 +386,22 @@ export default definePluginEntry({
           }
           piAi = await import(piAiPath);
         }
-        // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24)
-        const provider = params.provider ?? apiRef.runtime.agent.defaults.provider;
-        const rawModel = params.model ?? apiRef.runtime.agent.defaults.model;
-        // defaults.model may be an object {primary: '...', fallbacks: []} — unwrap it
-        const modelIdRaw = typeof rawModel === 'object' && rawModel !== null
-          ? (rawModel as any).primary ?? (rawModel as any).id ?? String(rawModel)
-          : rawModel;
-        // modelId may be "provider/model" format — split if provider not set
-        let resolvedProvider = provider;
-        let modelId = modelIdRaw;
-        if (typeof modelId === 'string' && modelId.includes('/') && !resolvedProvider) {
-          const idx = modelId.indexOf('/');
-          resolvedProvider = modelId.slice(0, idx);
-          modelId = modelId.slice(idx + 1);
-        }
-        const model = piAi!.getModel(resolvedProvider, modelId);
+        // Fall back to calling pi-ai directly (runtime.complete not in OpenClaw 2026.3.24).
+        // Fully-qualified OpenClaw refs (provider/model) are authoritative:
+        // stale runtime default providers must not override e.g.
+        // "openrouter/google/gemini-3-flash-preview".
+        const cfg = apiRef.runtime.config.loadConfig();
+        const resolved = resolveModelRef({
+          explicitProvider: params.provider,
+          explicitModel: params.model,
+          config: cfg,
+          runtimeDefaults: apiRef.runtime.agent.defaults,
+        });
+        const model = piAi!.getModel(resolved.provider, resolved.modelId);
         if (!model) {
-          throw new Error(`Model "${modelId}" not found for provider "${provider}"`);
+          throw new Error(`Model "${resolved.modelId}" not found for provider "${resolved.provider}"`);
         }
         // Resolve auth via OpenClaw's runtime (handles profiles, env vars, etc.)
-        const cfg = apiRef.runtime.config.loadConfig();
         const auth = await apiRef.runtime.modelAuth.getApiKeyForModel({ model, cfg });
         // Build context
         const now = Date.now();
@@ -417,7 +415,7 @@ export default definePluginEntry({
         );
         const context = { systemPrompt: params.system, messages };
         // Pass apiKey directly in options so the provider can use it
-        log.info(`complete(): provider=${resolvedProvider} model=${modelId} msgs=${params.messages.length}`);
+        log.info(`complete(): provider=${resolved.provider} model=${resolved.modelId} msgs=${params.messages.length}`);
         // NOTE: outputFormat (structured output) is intentionally NOT passed to pi-ai.
         // pi-ai's SimpleStreamOptions doesn't support it, and injecting it via onPayload
         // causes the Anthropic API to return empty responses. The daemon's JSON parsing
