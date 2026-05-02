@@ -51,6 +51,14 @@ export interface KongBrainConfig {
   thresholds: ThresholdConfig;
 }
 
+const DEFAULT_EMBEDDING_DIMENSIONS = 1024;
+
+function parsePositiveInteger(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : fallback;
+}
+
 function parseEmbeddingConfig(raw: Record<string, unknown>): EmbeddingConfig {
   const openaiCompatRaw = (raw.openaiCompat ?? {}) as Record<string, unknown>;
 
@@ -63,7 +71,7 @@ function parseEmbeddingConfig(raw: Record<string, unknown>): EmbeddingConfig {
 
   return {
     provider,
-    dimensions: typeof raw.dimensions === "number" ? raw.dimensions : 1024,
+    dimensions: parsePositiveInteger(raw.dimensions, DEFAULT_EMBEDDING_DIMENSIONS),
     modelPath:
       process.env.EMBED_MODEL_PATH ??
       (typeof raw.modelPath === "string"
