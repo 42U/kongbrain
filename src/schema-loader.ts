@@ -12,12 +12,30 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export function loadSchema(): string {
+const DEFAULT_EMBEDDING_DIMENSIONS = 1024;
+const DIMENSION_PLACEHOLDER = "__KONGBRAIN_EMBEDDING_DIMENSIONS__";
+
+export interface LoadSchemaOptions {
+  embeddingDimensions?: number;
+}
+
+function normalizeDimensions(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : DEFAULT_EMBEDDING_DIMENSIONS;
+}
+
+export function loadSchema(options: LoadSchemaOptions = {}): string {
   const primary = join(__dirname, "schema.surql");
+  let schema: string;
   try {
-    return readFileSync(primary, "utf-8");
+    schema = readFileSync(primary, "utf-8");
   } catch {
     // Dev fallback: compiled output lives in dist/, schema source in src/
-    return readFileSync(join(__dirname, "..", "src", "schema.surql"), "utf-8");
+    schema = readFileSync(join(__dirname, "..", "src", "schema.surql"), "utf-8");
   }
+  return schema.replaceAll(
+    DIMENSION_PLACEHOLDER,
+    String(normalizeDimensions(options.embeddingDimensions)),
+  );
 }

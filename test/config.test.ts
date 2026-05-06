@@ -106,6 +106,24 @@ describe("parsePluginConfig", () => {
     expect(config.embedding.dimensions).toBe(768);
   });
 
+  it("accepts positive integer embedding dimensions", () => {
+    const config = parsePluginConfig({
+      embedding: { dimensions: 1536 },
+    });
+
+    expect(config.embedding.dimensions).toBe(1536);
+  });
+
+  it("falls back to default dimensions for invalid embedding dimensions", () => {
+    for (const dimensions of [0, -1, 1.5, Number.NaN, "768"]) {
+      const config = parsePluginConfig({
+        embedding: { dimensions },
+      } as any);
+
+      expect(config.embedding.dimensions).toBe(1024);
+    }
+  });
+
   it("plugin config takes priority over env vars", () => {
     process.env.SURREAL_URL = "ws://env-override:1234/rpc";
     process.env.SURREAL_USER = "envuser";

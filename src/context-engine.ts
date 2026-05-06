@@ -76,7 +76,9 @@ export class KongBrainContextEngine implements ContextEngine {
     // Run schema once per process (idempotent but expensive on every bootstrap)
     if (!this.state.schemaApplied) {
       try {
-        const schemaSql = loadSchema();
+        const schemaSql = loadSchema({
+          embeddingDimensions: this.state.config.embedding.dimensions,
+        });
         await store.queryExec(schemaSql);
         this.state.schemaApplied = true;
       } catch (e) {

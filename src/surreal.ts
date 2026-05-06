@@ -47,6 +47,10 @@ export interface UtilityCacheEntry {
   retrieval_count: number;
 }
 
+export interface SurrealStoreOptions {
+  embeddingDimensions?: number;
+}
+
 const RECORD_ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z0-9_]+$/;
 
 function assertRecordId(id: string): void {
@@ -132,9 +136,11 @@ export class SurrealStore {
    * deployments keep working if the wire-up step is ever skipped.
    */
   private activeProvider: string = "local-bge-m3";
+  private schemaOptions: SurrealStoreOptions;
 
-  constructor(config: SurrealConfig) {
+  constructor(config: SurrealConfig, options: SurrealStoreOptions = {}) {
     this.config = config;
+    this.schemaOptions = options;
     this.db = new Surreal();
   }
 
@@ -216,7 +222,9 @@ export class SurrealStore {
   }
 
   private async runSchema(): Promise<void> {
-    const schema = loadSchema();
+    const schema = loadSchema({
+      embeddingDimensions: this.schemaOptions.embeddingDimensions,
+    });
     await this.db.query(schema);
   }
 
