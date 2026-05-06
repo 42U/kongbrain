@@ -334,6 +334,38 @@ async function checkEmbeddingProviderMismatch(
   }
 }
 
+/**
+ * Detect vectors whose dimensionality doesn't match the configured dimension.
+ * DEFINE INDEX IF NOT EXISTS is non-destructive — changing embedding.dimensions
+ * after initial setup leaves the HNSW index at the old dimension while new
+ * vectors are written at the new size. Warn so the user knows to rebuild.
+ */
+async function checkEmbeddingDimensionMismatch(
+  store: SurrealStore,
+  configuredDimensions: number,
+  logger: { warn: (msg: string) => void },
+): Promise<void> {
+  if (!store.isAvailable()) return;
+  const tables = ["concept", "memory", "turn", "artifact", "identity_chunk", "skill", "reflection", "monologue"];
+  for (const t of tables) {
+    try {
+      const rows = await store.queryFirst<{ len: number }>(
+        `SELECT array::len(embedding) AS len FROM ${t} WHERE embedding != NONE AND array::len(embedding) > 0 LIMIT 1`,
+      );
+      if (rows.length > 0 && rows[0].len !== configuredDimensions) {
+        logger.warn(
+          `Embedding dimension mismatch: existing vectors are ${rows[0].len}-dimensional but embedding.dimensions is configured as ${configuredDimensions}. ` +
+            `HNSW indexes created at the old dimension are not updated by DEFINE INDEX IF NOT EXISTS. ` +
+            `To fix: drop and recreate the vector indexes, then re-embed affected rows.`,
+        );
+        return;
+      }
+    } catch (e) {
+      swallow.warn(`factory:dimensionMismatchCheck:${t}`, e);
+    }
+  }
+}
+
 export default definePluginEntry({
   id: "kongbrain",
   name: "KongBrain",
@@ -469,6 +501,8 @@ export default definePluginEntry({
           // re-embedded with the active provider.
           checkEmbeddingProviderMismatch(store, embeddings.providerId, logger)
             .catch(e => swallow.warn("factory:providerMismatchCheck", e));
+          checkEmbeddingDimensionMismatch(store, config.embedding.dimensions, logger)
+            .catch(e => swallow.warn("factory:dimensionMismatchCheck", e));
         }
       } catch (e) {
         logger.warn(`Embeddings init failed — running in degraded mode: ${e}`);

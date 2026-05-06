@@ -72,4 +72,16 @@ describe("resolveModelRef", () => {
       modelId: "claude-opus-4.6",
     });
   });
+
+  it("throws when no model is configured anywhere", () => {
+    expect(() => resolveModelRef({})).toThrow(
+      "No LLM model configured for KongBrain internal completion",
+    );
+  });
+
+  it("throws when unqualified model has no provider", () => {
+    expect(() =>
+      resolveModelRef({ runtimeDefaults: { model: "claude-opus-4.6" } }),
+    ).toThrow('No LLM provider configured for model "claude-opus-4.6"');
+  });
 });
