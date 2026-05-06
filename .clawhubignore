@@ -12,7 +12,6 @@ vitest.config.ts
 
 # Build/deps
 node_modules/
-dist/
 package-lock.json
 
 # Secrets/runtime

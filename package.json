@@ -31,8 +31,22 @@
     "extensions": [
       "./src/index.ts"
     ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
     "install": {
-      "minHostVersion": ">=2026.3.23"
+      "minHostVersion": ">=2026.3.23",
+      "type": "code-plugin",
+      "requires": {
+        "bins": ["surreal"],
+        "env": ["SURREAL_URL", "SURREAL_USER", "SURREAL_PASS", "SURREAL_NS", "SURREAL_DB"],
+        "optionalEnv": [
+          "KONGBRAIN_EMBED_PROVIDER",
+          "EMBED_MODEL_PATH",
+          "OPENAI_BASE_URL",
+          "OPENAI_API_KEY"
+        ]
+      }
     },
     "compat": {
       "pluginApi": ">=2026.3.23",
@@ -48,7 +62,7 @@
     "postpack": "cp README.github.md README.md && rm README.github.md",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsc --noEmit",
+    "build": "tsup src/index.ts --format esm --out-dir dist --clean",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -57,6 +71,8 @@
     "surrealdb": "^2.0.3"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
     "vitest": "^3.2.4"
   },
   "peerDependencies": {

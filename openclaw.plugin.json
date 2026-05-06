@@ -5,7 +5,15 @@
   "kind": "context-engine",
   "requires": {
     "bins": ["surreal"],
-    "env": ["SURREAL_URL", "SURREAL_USER", "SURREAL_PASS", "SURREAL_NS", "SURREAL_DB"]
+    "env": ["SURREAL_URL", "SURREAL_USER", "SURREAL_PASS", "SURREAL_NS", "SURREAL_DB"],
+    "optionalEnv": [
+      "KONGBRAIN_EMBED_PROVIDER",
+      "EMBED_MODEL_PATH",
+      "OPENAI_BASE_URL",
+      "OPENAI_API_KEY",
+      "KONGBRAIN_LOG_LEVEL",
+      "KONGBRAIN_DEBUG"
+    ]
   },
   "uiHints": {
     "surreal.url": {

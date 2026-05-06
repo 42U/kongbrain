@@ -14,6 +14,11 @@ metadata:
         - SURREAL_PASS
         - SURREAL_NS
         - SURREAL_DB
+      optionalEnv:
+        - KONGBRAIN_EMBED_PROVIDER
+        - EMBED_MODEL_PATH
+        - OPENAI_BASE_URL
+        - OPENAI_API_KEY
     primaryEnv: SURREAL_URL
     install:
       - kind: node

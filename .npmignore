@@ -3,7 +3,6 @@
 .git/
 test/
 node_modules/
-dist/
 vitest.config.ts
 tsconfig.json
 *.test.ts
