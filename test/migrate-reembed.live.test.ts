@@ -2,7 +2,7 @@
  * End-to-end migration test: real SurrealDB + real OpenAI-compat provider
  * + real reembedAll core. Skipped by default. Opt in with:
  *
- *   KONGBRAIN_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... npx vitest run test/migrate-reembed.live.test.ts
+ *   LAQRUMBRAIN_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... npx vitest run test/migrate-reembed.live.test.ts
  *
  * Costs a fraction of a cent (4 small inputs through text-embedding-3-small).
  *
@@ -15,8 +15,8 @@ import { OpenAICompatEmbeddingService } from "../src/embeddings-openai.js";
 import { reembedAll } from "../src/migrate-reembed.js";
 import { SurrealStore } from "../src/surreal.js";
 
-const live = process.env.KONGBRAIN_LIVE_OPENAI === "1" && !!process.env.OPENAI_API_KEY;
-const TEST_NS = "kong_test";
+const live = process.env.LAQRUMBRAIN_LIVE_OPENAI === "1" && !!process.env.OPENAI_API_KEY;
+const TEST_NS = "laqrum_test";
 const TEST_DB = `reembed_e2e_${Date.now()}`;
 
 let store: SurrealStore;

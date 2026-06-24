@@ -7,7 +7,7 @@ describe("parsePluginConfig", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    // Clear all KongBrain-related env vars
+    // Clear all LaqrumBrain-related env vars
     delete process.env.SURREAL_URL;
     delete process.env.SURREAL_HTTP_URL;
     delete process.env.SURREAL_USER;
@@ -15,7 +15,7 @@ describe("parsePluginConfig", () => {
     delete process.env.SURREAL_NS;
     delete process.env.SURREAL_DB;
     delete process.env.EMBED_MODEL_PATH;
-    delete process.env.KONGBRAIN_EMBED_PROVIDER;
+    delete process.env.LAQRUMBRAIN_EMBED_PROVIDER;
     delete process.env.OPENAI_BASE_URL;
   });
 
@@ -28,7 +28,7 @@ describe("parsePluginConfig", () => {
     expect(config.surreal.url).toBe("ws://localhost:8042/rpc");
     expect(config.surreal.user).toBe("root");
     expect(config.surreal.pass).toBe("root");
-    expect(config.surreal.ns).toBe("kong");
+    expect(config.surreal.ns).toBe("laqrum");
     expect(config.surreal.db).toBe("memory");
     expect(config.embedding.provider).toBe("local");
     expect(config.embedding.dimensions).toBe(1024);
@@ -58,8 +58,8 @@ describe("parsePluginConfig", () => {
     expect(config.embedding.openaiCompat.apiKeyEnv).toBe("AZURE_OPENAI_KEY");
   });
 
-  it("KONGBRAIN_EMBED_PROVIDER env var overrides plugin config", () => {
-    process.env.KONGBRAIN_EMBED_PROVIDER = "openai-compat";
+  it("LAQRUMBRAIN_EMBED_PROVIDER env var overrides plugin config", () => {
+    process.env.LAQRUMBRAIN_EMBED_PROVIDER = "openai-compat";
     const config = parsePluginConfig({ embedding: { provider: "local" } });
     expect(config.embedding.provider).toBe("openai-compat");
   });
@@ -80,7 +80,7 @@ describe("parsePluginConfig", () => {
   it("returns defaults with empty object", () => {
     const config = parsePluginConfig({});
     expect(config.surreal.url).toBe("ws://localhost:8042/rpc");
-    expect(config.surreal.ns).toBe("kong");
+    expect(config.surreal.ns).toBe("laqrum");
   });
 
   it("reads values from plugin config", () => {

@@ -5,7 +5,7 @@
  * cross-attention model. Ships dormant — auto-trains and activates when
  * enough retrieval outcome data accumulates (5000+ labeled pairs).
  *
- * Ported from kongbrain — uses SurrealStore instead of module-level DB.
+ * Ported from laqrumbrain — uses SurrealStore instead of module-level DB.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -69,8 +69,8 @@ const FEATURE_COUNT = 7;
 const WEIGHTS_FILENAME = "acan_weights.json";
 const TRAINING_THRESHOLD = 5000;
 
-function getKongDir(): string {
-  const dir = join(homedir(), ".kongbrain");
+function getLaqrumDir(): string {
+  const dir = join(homedir(), ".laqrumbrain");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -124,7 +124,7 @@ function saveWeights(weights: ACANWeights, path: string): void {
 }
 
 export function initACAN(weightsDir?: string): boolean {
-  const dir = weightsDir ?? getKongDir();
+  const dir = weightsDir ?? getLaqrumDir();
   _weights = loadWeights(join(dir, WEIGHTS_FILENAME));
   _active = _weights !== null;
   return _active;
@@ -318,7 +318,7 @@ const STALENESS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export async function checkACANReadiness(store?: SurrealStore, trainingThreshold?: number): Promise<void> {
   if (!store) return;
   const threshold = trainingThreshold ?? TRAINING_THRESHOLD;
-  const weightsPath = join(getKongDir(), WEIGHTS_FILENAME);
+  const weightsPath = join(getLaqrumDir(), WEIGHTS_FILENAME);
   const hasWeights = initACAN();
   const count = await getTrainingDataCount(store);
 

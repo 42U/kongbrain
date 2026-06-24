@@ -3,14 +3,14 @@
  * One-shot backfill: embed all concepts that have `content` but no embedding vector.
  *
  * Usage:
- *   cd /home/zero/voidorigin/kongbrain
+ *   cd /home/zero/voidorigin/laqrumbrain
  *   npx tsx scripts/backfill-embeddings.ts
  *
  * Env vars (all have defaults matching the plugin config):
  *   SURREAL_URL       (default: ws://localhost:8042/rpc)
  *   SURREAL_USER      (default: root)
  *   SURREAL_PASS      (default: root)
- *   SURREAL_NS        (default: kong)
+ *   SURREAL_NS        (default: laqrum)
  *   SURREAL_DB        (default: memory)
  *   EMBED_MODEL_PATH  (default: ~/.node-llama-cpp/models/bge-m3-q4_k_m.gguf)
  */

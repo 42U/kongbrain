@@ -2,7 +2,7 @@
  * Live smoke test against a real OpenAI-compatible embeddings endpoint.
  *
  * Skipped by default. Opt in with:
- *   KONGBRAIN_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... npx vitest run test/embeddings-openai.live.test.ts
+ *   LAQRUMBRAIN_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... npx vitest run test/embeddings-openai.live.test.ts
  *
  * Costs a few thousand tokens on text-embedding-3-small (~$0.0001).
  */
@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { EmbeddingConfig } from "../src/config.js";
 import { OpenAICompatEmbeddingService } from "../src/embeddings-openai.js";
 
-const live = process.env.KONGBRAIN_LIVE_OPENAI === "1" && !!process.env.OPENAI_API_KEY;
+const live = process.env.LAQRUMBRAIN_LIVE_OPENAI === "1" && !!process.env.OPENAI_API_KEY;
 
 function makeConfig(overrides: Partial<EmbeddingConfig> = {}): EmbeddingConfig {
   return {
@@ -31,7 +31,7 @@ describe.skipIf(!live)("OpenAICompatEmbeddingService — live", () => {
   it("embeds a single string and returns the requested dim", async () => {
     const svc = new OpenAICompatEmbeddingService(makeConfig());
     await svc.initialize();
-    const vec = await svc.embed("KongBrain re-embed migration smoke test.");
+    const vec = await svc.embed("LaqrumBrain re-embed migration smoke test.");
     expect(vec).toHaveLength(1024);
     // Embeddings are normalized by OpenAI's text-embedding-3-small at any
     // requested dim, so the vector should have unit norm (within fp noise).

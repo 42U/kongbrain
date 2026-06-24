@@ -18,7 +18,7 @@ import { log } from "./log.js";
 
 // Process-global flag — deferred cleanup runs AT MOST ONCE per process.
 // Using Symbol.for so it survives Jiti re-importing this module.
-const RAN_KEY = Symbol.for("kongbrain.deferredCleanup.ran");
+const RAN_KEY = Symbol.for("laqrumbrain.deferredCleanup.ran");
 const _g = globalThis as Record<symbol, unknown>;
 
 /**

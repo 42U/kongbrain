@@ -1,4 +1,4 @@
-import type { KongBrainConfig } from "./config.js";
+import type { LaqrumBrainConfig } from "./config.js";
 import type { SurrealStore } from "./surreal.js";
 import type { EmbeddingService } from "./embeddings.js";
 import type { AdaptiveConfig } from "./orchestrator.js";
@@ -145,7 +145,7 @@ export type EnqueueSystemEventFn = (text: string, options: { sessionKey: string 
 
 /** Singleton shared state: config, SurrealDB store, embedding service, and session map. */
 export class GlobalPluginState {
-  readonly config: KongBrainConfig;
+  readonly config: LaqrumBrainConfig;
   readonly store: SurrealStore;
   readonly embeddings: EmbeddingService;
   complete: CompleteFn;
@@ -155,7 +155,7 @@ export class GlobalPluginState {
   private sessions = new Map<string, SessionState>();
 
   constructor(
-    config: KongBrainConfig,
+    config: LaqrumBrainConfig,
     store: SurrealStore,
     embeddings: EmbeddingService,
     complete: CompleteFn,

@@ -6,7 +6,7 @@
  * LLM call. The briefing is injected into the system prompt so the agent
  * "wakes up" knowing who it is and what it was doing.
  *
- * Ported from kongbrain — takes SurrealStore as param.
+ * Ported from laqrumbrain — takes SurrealStore as param.
  */
 
 import type { CompleteFn } from "./state.js";

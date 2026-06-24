@@ -75,7 +75,7 @@ export function resolveModelRef(input: ResolveModelRefInput): ResolvedModelRef {
   const chosen = chooseModelRef(input);
 
   if (!chosen) {
-    throw new Error("No LLM model configured for KongBrain internal completion");
+    throw new Error("No LLM model configured for LaqrumBrain internal completion");
   }
 
   const explicitProvider = nonEmptyString(input.explicitProvider);

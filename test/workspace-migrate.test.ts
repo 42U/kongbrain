@@ -31,7 +31,7 @@ function mockEmbeddings(available = false) {
 // --- Temp workspace helper ---
 
 async function makeTempWorkspace(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "kongbrain-test-"));
+  return mkdtemp(join(tmpdir(), "laqrumbrain-test-"));
 }
 
 // ── hasMigratableFiles ───────────────────────────────────────────────────────
@@ -210,7 +210,7 @@ description: Deploy the application
     expect(store._records.some(r => (r as any).path === "HEARTBEAT.md")).toBe(false);
   });
 
-  it("archives ingested files to .kongbrain-archive/", async () => {
+  it("archives ingested files to .laqrumbrain-archive/", async () => {
     await writeFile(join(dir, "IDENTITY.md"), "I am an agent with many skills.");
     await migrateWorkspace(dir, mockStore() as any, mockEmbeddings() as any);
 
@@ -219,7 +219,7 @@ description: Deploy the application
     expect(origExists).toBe(false);
 
     // Archive should exist
-    const archiveExists = await stat(join(dir, ".kongbrain-archive", "IDENTITY.md")).then(() => true).catch(() => false);
+    const archiveExists = await stat(join(dir, ".laqrumbrain-archive", "IDENTITY.md")).then(() => true).catch(() => false);
     expect(archiveExists).toBe(true);
   });
 

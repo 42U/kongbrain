@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * kongbrain-reembed — re-embed migration CLI.
+ * laqrumbrain-reembed — re-embed migration CLI.
  *
  * Reads connection settings from the same env vars the plugin uses, plus
- * KONGBRAIN_EMBED_PROVIDER / OPENAI_BASE_URL / etc. for the target
+ * LAQRUMBRAIN_EMBED_PROVIDER / OPENAI_BASE_URL / etc. for the target
  * provider. Migrates rows tagged with --from to the active provider's
  * vector space.
  *
  * Usage:
- *   kongbrain-reembed --from local-bge-m3 [--dry-run] [--tables turn,memory] [--batch 256]
+ *   laqrumbrain-reembed --from local-bge-m3 [--dry-run] [--tables turn,memory] [--batch 256]
  *
  * Resumable: each batch flips embedding_provider so processed rows leave
  * the FROM filter. Restarting after a crash continues from where it
@@ -60,7 +60,7 @@ function parseArgs(argv: string[]): CliFlags {
   return flags;
 }
 
-const HELP = `kongbrain-reembed — migrate embeddings between providers
+const HELP = `laqrumbrain-reembed — migrate embeddings between providers
 
 Required:
   --from <provider-id>     Provider tag to migrate FROM (e.g. local-bge-m3)
@@ -72,7 +72,7 @@ Optional:
   --help                   Show this message
 
 The TARGET provider is whatever the active EmbeddingService produces, set
-via plugin config + env vars (KONGBRAIN_EMBED_PROVIDER, OPENAI_BASE_URL,
+via plugin config + env vars (LAQRUMBRAIN_EMBED_PROVIDER, OPENAI_BASE_URL,
 the API key env var named in embedding.openaiCompat.apiKeyEnv).
 
 Resumability: each batch flips the embedding_provider tag, so re-running
@@ -80,10 +80,10 @@ after an interruption picks up from where the last successful batch left
 off — no checkpoint file needed.
 
 Example: migrate from local BGE-M3 to OpenAI text-embedding-3-small at 1024d:
-  export KONGBRAIN_EMBED_PROVIDER=openai-compat
+  export LAQRUMBRAIN_EMBED_PROVIDER=openai-compat
   export OPENAI_API_KEY=sk-...
-  npx kongbrain-reembed --from local-bge-m3 --dry-run    # check the size
-  npx kongbrain-reembed --from local-bge-m3              # run for real
+  npx laqrumbrain-reembed --from local-bge-m3 --dry-run    # check the size
+  npx laqrumbrain-reembed --from local-bge-m3              # run for real
 `;
 
 async function main(): Promise<number> {
@@ -137,7 +137,7 @@ async function main(): Promise<number> {
 main().then(
   code => process.exit(code),
   err => {
-    console.error("kongbrain-reembed failed:", err?.message ?? err);
+    console.error("laqrumbrain-reembed failed:", err?.message ?? err);
     process.exit(1);
   },
 );

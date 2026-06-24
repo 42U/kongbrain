@@ -6,7 +6,7 @@
  * Next time a similar task is requested, inject the proven procedure as context.
  * Skills earn success/failure counts from outcomes — RL-like reinforcement.
  *
- * Ported from kongbrain — takes SurrealStore/EmbeddingService as params.
+ * Ported from laqrumbrain — takes SurrealStore/EmbeddingService as params.
  */
 
 import type { CompleteFn } from "./state.js";

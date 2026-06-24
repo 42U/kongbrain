@@ -1,7 +1,7 @@
 /**
  * Workspace Migration — ingest OpenClaw's workspace files into SurrealDB.
  *
- * When a user switches from the default context engine to KongBrain, their
+ * When a user switches from the default context engine to LaqrumBrain, their
  * workspace may contain .md files, skill definitions, session transcripts,
  * and memory logs created by OpenClaw. This module:
  *
@@ -9,7 +9,7 @@
  *  2. Scans skills/ and .agents/skills/ for SKILL.md → proper `skill` records
  *  3. Scans memory/ for daily logs → `memory` records
  *  4. Ingests identity/user/agent files as memories + artifacts
- *  5. Archives originals into .kongbrain-archive/ so the workspace is clean
+ *  5. Archives originals into .laqrumbrain-archive/ so the workspace is clean
  *
  * IMPORTANT: This module NEVER touches user project files. A user's README.md,
  * package.json, docs/, test fixtures, scripts, etc. are left completely alone.
@@ -670,7 +670,7 @@ function summarizeFile(relPath: string, name: string, content: string): string {
 // ── Archiving ────────────────────────────────────────────────────────────────
 
 /**
- * Move ingested files into .kongbrain-archive/ preserving directory structure.
+ * Move ingested files into .laqrumbrain-archive/ preserving directory structure.
  * Uses copyFile + unlink (works across filesystems and on all OSes).
  * SOUL.md is never touched.
  */
@@ -678,7 +678,7 @@ async function archiveFiles(
   workspaceDir: string,
   files: WorkspaceFile[],
 ): Promise<string> {
-  const archiveDir = join(workspaceDir, ".kongbrain-archive");
+  const archiveDir = join(workspaceDir, ".laqrumbrain-archive");
   await mkdir(archiveDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -703,7 +703,7 @@ async function archiveFiles(
 
   // Write manifest
   const manifest = [
-    `KongBrain Migration Archive`,
+    `LaqrumBrain Migration Archive`,
     `Date: ${new Date().toISOString()}`,
     `Platform: ${process.platform}`,
     ``,

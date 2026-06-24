@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to KongBrain are documented here.
+All notable changes to LaqrumBrain are documented here.
 
 ## [0.5.0] - 2026-04-25
 
@@ -10,9 +10,9 @@ Configurable embedding providers. Closes #1.
 - **Configurable embedding provider**: New `embedding.provider` config field. Options: `local` (BGE-M3 via node-llama-cpp, default and unchanged) or `openai-compat` (any OpenAI-compatible `/v1/embeddings` endpoint — OpenAI, Azure OpenAI, Together, Anyscale, vLLM, LM Studio, Ollama, DeepInfra, Fireworks).
 - **OpenAI-compatible provider**: `fetch`-based, no SDK dependency. Batches inputs at 96/request, retries 429 + 5xx with exponential backoff and `Retry-After` honoring, hard-fails on 401/403/404 and `insufficient_quota` with clear error messages, verifies returned dimensionality matches config.
 - **Per-row provider tagging**: Every vector-bearing table (`turn`, `concept`, `memory`, `artifact`, `identity_chunk`, `skill`, `reflection`, `monologue`) gets an `embedding_provider` column. Searches filter by the active provider so vectors from different models (different vector spaces) never mix in HNSW results.
-- **Re-embed migration tool**: `npx kongbrain-reembed --from <provider-id> [--dry-run] [--tables …] [--batch …]`. Resumable on interruption (the WHERE filter naturally excludes processed rows). Reports per-table progress and estimated cost.
+- **Re-embed migration tool**: `npx laqrumbrain-reembed --from <provider-id> [--dry-run] [--tables …] [--batch …]`. Resumable on interruption (the WHERE filter naturally excludes processed rows). Reports per-table progress and estimated cost.
 - **Startup mismatch warning**: Logs a clear notice (with row counts and migration command) when the configured provider does not match what is in the database.
-- **Provider env overrides**: `KONGBRAIN_EMBED_PROVIDER` flips provider without editing config; `OPENAI_BASE_URL` overrides endpoint (matches the official OpenAI SDK convention); `embedding.openaiCompat.apiKeyEnv` names the env var holding the secret so keys never appear in config files.
+- **Provider env overrides**: `LAQRUMBRAIN_EMBED_PROVIDER` flips provider without editing config; `OPENAI_BASE_URL` overrides endpoint (matches the official OpenAI SDK convention); `embedding.openaiCompat.apiKeyEnv` names the env var holding the secret so keys never appear in config files.
 - **Plugin manifest**: `openclaw.plugin.json` extended with `provider` / `dimensions` / `openaiCompat` schema and uiHints with inline help text.
 
 ### Infrastructure
@@ -26,7 +26,7 @@ Configurable embedding providers. Closes #1.
 
 ### Upgrade notes
 - **No action required for existing local BGE-M3 deployments.** The schema migration adds the new column and tags all existing rows as `local-bge-m3`. Search continues to work identically.
-- **To switch providers**: set `embedding.provider: "openai-compat"` and `OPENAI_API_KEY`. On restart you will see a warning about rows in the old vector space. Run `npx kongbrain-reembed --from local-bge-m3 --dry-run` to estimate cost (~$0.04 per ~3,400 turns on text-embedding-3-small), then drop `--dry-run` to migrate. Resumable if interrupted.
+- **To switch providers**: set `embedding.provider: "openai-compat"` and `OPENAI_API_KEY`. On restart you will see a warning about rows in the old vector space. Run `npx laqrumbrain-reembed --from local-bge-m3 --dry-run` to estimate cost (~$0.04 per ~3,400 turns on text-embedding-3-small), then drop `--dry-run` to migrate. Resumable if interrupted.
 
 ## [0.4.4] - 2026-04-04
 
@@ -56,7 +56,7 @@ Configurable embedding providers. Closes #1.
 - **Embedding reuse**: User embeddings from ingest stashed in session state and reused in retrieval, eliminating 1-4 redundant BGE-M3 calls per turn.
 - **Token estimation**: Aligned with Claude Code — 4 bytes/token (was 3.4), JSON at 2 bytes/token, images at 2000 tokens, 33% safety margin.
 - **Content stripping**: Old thinking blocks, images, tool results, and assistant filler text surgically replaced with compact stubs. Saves 20-80k tokens/session.
-- **Prompt compression**: Rules suffix (~400 → ~80 tokens), planning gate (~250 → ~60), IKONG description (~120 → ~20), cognitive check (~300 → ~120).
+- **Prompt compression**: Rules suffix (~400 → ~80 tokens), planning gate (~250 → ~60), ILAQRUM description (~120 → ~20), cognitive check (~300 → ~120).
 - **Structured output**: All internal LLM calls use `json_schema` output format when supported. Eliminates markdown fencing and preamble.
 - **Budget model**: 4-way split (conversation 23%, retrieval 38.5%, core 15.5%, tools 23%) with SPA cap at 8% of context window.
 - **Parallel DB calls**: `scoreResults` parallelizes utility cache + reflection session lookups. Single `getSessionTurns` fetch in `afterTurn` reused by all consumers.

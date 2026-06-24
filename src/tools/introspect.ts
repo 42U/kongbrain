@@ -1,6 +1,6 @@
 /**
  * Introspect tool — inspect the memory database.
- * Ported from kongbrain with SurrealStore injection.
+ * Ported from laqrumbrain with SurrealStore injection.
  */
 
 import { Type } from "@sinclair/typebox";

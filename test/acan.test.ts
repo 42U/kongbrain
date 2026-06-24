@@ -27,7 +27,7 @@ const FEATURE_COUNT = 7;
 // ── Helpers ──
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `kongbrain-acan-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `laqrumbrain-acan-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

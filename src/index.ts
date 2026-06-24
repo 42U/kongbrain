@@ -1,5 +1,5 @@
 /**
- * KongBrain — OpenClaw context-engine plugin entry point.
+ * LaqrumBrain — OpenClaw context-engine plugin entry point.
  *
  * Replaces the default context engine with graph-based retrieval using
  * SurrealDB persistence and BGE-M3 embeddings.
@@ -13,7 +13,7 @@ import { SurrealStore } from "./surreal.js";
 import { createEmbeddingService } from "./embeddings.js";
 import { GlobalPluginState, type CompleteFn } from "./state.js";
 import { resolveModelRef } from "./model-resolution.js";
-import { KongBrainContextEngine } from "./context-engine.js";
+import { LaqrumBrainContextEngine } from "./context-engine.js";
 import { createRecallToolDef } from "./tools/recall.js";
 import { createCoreMemoryToolDef } from "./tools/core-memory.js";
 import { createIntrospectToolDef } from "./tools/introspect.js";
@@ -39,8 +39,8 @@ import { log } from "./log.js";
 // Use process-global symbols so state survives Jiti re-importing the module.
 // Jiti may load this file multiple times (fresh module scope each time),
 // but process.env and Symbol.for() are process-wide singletons.
-const GLOBAL_KEY = Symbol.for("kongbrain.globalState");
-const REGISTERED_KEY = Symbol.for("kongbrain.registered");
+const GLOBAL_KEY = Symbol.for("laqrumbrain.globalState");
+const REGISTERED_KEY = Symbol.for("laqrumbrain.registered");
 
 // Typed accessor for process-global symbol keys on globalThis
 const _g = globalThis as Record<symbol, unknown>;
@@ -186,7 +186,7 @@ async function runSessionCleanup(
         // Fire system event for immediate user notification
         if (state.enqueueSystemEvent) {
           state.enqueueSystemEvent(
-            "[GRADUATION] KongBrain has achieved soul graduation! " +
+            "[GRADUATION] LaqrumBrain has achieved soul graduation! " +
             "The agent has accumulated enough experience and demonstrated sufficient quality " +
             "to author its own identity document. It will share this milestone at the start of the next session.",
             { sessionKey: session.sessionKey },
@@ -270,7 +270,7 @@ async function detectGraduationEvent(
     working_style: string[];
     self_observations: string[];
     earned_values: { value: string; grounded_in: string }[];
-  }>(`SELECT working_style, self_observations, earned_values FROM soul:kongbrain`).catch(() => []);
+  }>(`SELECT working_style, self_observations, earned_values FROM soul:laqrumbrain`).catch(() => []);
   const soul = soulRows[0];
 
   // Build a summary the agent can use to talk about itself
@@ -292,7 +292,7 @@ async function detectGraduationEvent(
   // Also fire a system event so the user sees it immediately
   if (state.enqueueSystemEvent) {
     state.enqueueSystemEvent(
-      "[MILESTONE] This is a special session — KongBrain has graduated and authored its own Soul document. " +
+      "[MILESTONE] This is a special session — LaqrumBrain has graduated and authored its own Soul document. " +
       "The agent will share what this means. " +
       "Ask the user if they have a SOUL.md file they'd like you to read — if so, use a tool call to read it and reflect on how it aligns with your emerged identity.",
       { sessionKey: session.sessionKey },
@@ -367,8 +367,8 @@ async function checkEmbeddingDimensionMismatch(
 }
 
 export default definePluginEntry({
-  id: "kongbrain",
-  name: "KongBrain",
+  id: "laqrumbrain",
+  name: "LaqrumBrain",
   description: "Graph-backed cognitive context engine with SurrealDB persistence and pluggable embeddings (local BGE-M3 or OpenAI-compatible).",
   kind: "context-engine",
 
@@ -475,7 +475,7 @@ export default definePluginEntry({
     const state = globalState;
 
     // Register the context engine factory
-    api.registerContextEngine("kongbrain", async () => {
+    api.registerContextEngine("laqrumbrain", async () => {
       const { store, embeddings } = state;
 
       // Connect to SurrealDB (no-op if already connected)
@@ -520,7 +520,7 @@ export default definePluginEntry({
         })
         .catch(e => swallow.warn("factory:seedBootstrap", e));
 
-      return new KongBrainContextEngine(state);
+      return new LaqrumBrainContextEngine(state);
     });
 
     // ── Hook handlers (register once — register() may be called multiple times) ──

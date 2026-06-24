@@ -17,7 +17,7 @@ package-lock.json
 # Secrets/runtime
 .env
 .env.*
-.kongbrain-handoff.json
+.laqrumbrain-handoff.json
 
 # README source files (prepack handles the swap)
 README.npm.md

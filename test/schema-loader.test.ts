@@ -11,7 +11,7 @@ describe("loadSchema", () => {
     const dimensions = vectorIndexDimensions(loadSchema());
     expect(dimensions).toHaveLength(8);
     expect(dimensions.every(dim => dim === "1024")).toBe(true);
-    expect(loadSchema()).not.toContain("__KONGBRAIN_EMBEDDING_DIMENSIONS__");
+    expect(loadSchema()).not.toContain("__LAQRUMBRAIN_EMBEDDING_DIMENSIONS__");
   });
 
   it("renders vector indexes using the configured embedding dimension", () => {

@@ -1,6 +1,6 @@
 node_modules/
 dist/
 .claude/
-.kongbrain-handoff.json
+.laqrumbrain-handoff.json
 publish.sh
 README.github.md

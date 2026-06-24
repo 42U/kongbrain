@@ -45,7 +45,7 @@ export interface ThresholdConfig {
   acanTrainingThreshold: number;
 }
 
-export interface KongBrainConfig {
+export interface LaqrumBrainConfig {
   surreal: SurrealConfig;
   embedding: EmbeddingConfig;
   thresholds: ThresholdConfig;
@@ -64,7 +64,7 @@ function parseEmbeddingConfig(raw: Record<string, unknown>): EmbeddingConfig {
 
   // Provider precedence: env var > plugin config > default "local"
   const rawProvider =
-    process.env.KONGBRAIN_EMBED_PROVIDER ??
+    process.env.LAQRUMBRAIN_EMBED_PROVIDER ??
     (typeof raw.provider === "string" ? raw.provider : null);
   const provider: EmbeddingProvider =
     rawProvider === "openai-compat" ? "openai-compat" : "local";
@@ -100,7 +100,7 @@ function parseEmbeddingConfig(raw: Record<string, unknown>): EmbeddingConfig {
  * Parse plugin config from openclaw.plugin.json configSchema values,
  * with env var overrides and sensible defaults.
  */
-export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfig {
+export function parsePluginConfig(raw?: Record<string, unknown>): LaqrumBrainConfig {
   const surreal = (raw?.surreal ?? {}) as Record<string, unknown>;
   const embedding = (raw?.embedding ?? {}) as Record<string, unknown>;
   const thresholds = (raw?.thresholds ?? {}) as Record<string, unknown>;
@@ -125,7 +125,7 @@ export function parsePluginConfig(raw?: Record<string, unknown>): KongBrainConfi
       },
       user: (typeof surreal.user === "string" ? surreal.user : null) ?? process.env.SURREAL_USER ?? "root",
       pass: (typeof surreal.pass === "string" ? surreal.pass : null) ?? process.env.SURREAL_PASS ?? "root",
-      ns: (typeof surreal.ns === "string" ? surreal.ns : null) ?? process.env.SURREAL_NS ?? "kong",
+      ns: (typeof surreal.ns === "string" ? surreal.ns : null) ?? process.env.SURREAL_NS ?? "laqrum",
       db: (typeof surreal.db === "string" ? surreal.db : null) ?? process.env.SURREAL_DB ?? "memory",
     },
     embedding: parseEmbeddingConfig(embedding),

@@ -120,8 +120,8 @@ function patchOrderByFields(sql: string): string {
 }
 
 /**
- * SurrealDB store — wraps all database operations for the KongBrain plugin.
- * Replaces the module-level singleton pattern from standalone KongBrain.
+ * SurrealDB store — wraps all database operations for the LaqrumBrain plugin.
+ * Replaces the module-level singleton pattern from standalone LaqrumBrain.
  */
 export class SurrealStore {
   private db: Surreal;

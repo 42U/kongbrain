@@ -1,18 +1,18 @@
 {
-  "id": "kongbrain",
-  "name": "KongBrain",
+  "id": "laqrumbrain",
+  "name": "LaqrumBrain",
   "description": "Graph-backed cognitive context engine with SurrealDB + pluggable embeddings (local BGE-M3 or OpenAI-compatible)",
   "kind": "context-engine",
   "requires": {
     "bins": ["surreal"],
     "env": ["SURREAL_URL", "SURREAL_USER", "SURREAL_PASS", "SURREAL_NS", "SURREAL_DB"],
     "optionalEnv": [
-      "KONGBRAIN_EMBED_PROVIDER",
+      "LAQRUMBRAIN_EMBED_PROVIDER",
       "EMBED_MODEL_PATH",
       "OPENAI_BASE_URL",
       "OPENAI_API_KEY",
-      "KONGBRAIN_LOG_LEVEL",
-      "KONGBRAIN_DEBUG"
+      "LAQRUMBRAIN_LOG_LEVEL",
+      "LAQRUMBRAIN_DEBUG"
     ]
   },
   "uiHints": {
@@ -32,7 +32,7 @@
     },
     "surreal.ns": {
       "label": "SurrealDB Namespace",
-      "placeholder": "kong"
+      "placeholder": "laqrum"
     },
     "surreal.db": {
       "label": "SurrealDB Database",

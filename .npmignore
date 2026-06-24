@@ -8,7 +8,7 @@ tsconfig.json
 *.test.ts
 
 # Large assets
-KongClaw.png
+LaqrumClaw.png
 
 # GitHub-specific files (npm uses README.npm.md swapped in via prepack)
 README.npm.md
@@ -22,7 +22,7 @@ README.github.md
 UPSTREAM-PROPOSALS.md
 
 # Runtime files
-.kongbrain-handoff.json
+.laqrumbrain-handoff.json
 
 # Lock file (consumers use their own)
 package-lock.json

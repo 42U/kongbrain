@@ -1,7 +1,7 @@
 /**
  * Graph-based context transformation for OpenClaw.
  *
- * Ported from kongbrain's graph-context.ts. Key changes:
+ * Ported from laqrumbrain's graph-context.ts. Key changes:
  * - No module-level state: all mutable state flows through SessionState
  * - SurrealStore and EmbeddingService are passed as parameters
  * - Designed to be called from ContextEngine.assemble()
@@ -603,14 +603,14 @@ async function formatContextMessage(
 
   // Pillar context — structural IDs only (architecture description is unnecessary token spend)
   // Skip if model already has it in the conversation window (claw-code static section dedup)
-  if (!session.injectedSections.has("ikong")) {
+  if (!session.injectedSections.has("ilaqrum")) {
     const pillarLines: string[] = [];
     if (session.agentId) pillarLines.push(`Agent: ${session.agentId}`);
     if (session.projectId) pillarLines.push(`Project: ${session.projectId}`);
     if (session.taskId) pillarLines.push(`Task: ${session.taskId}`);
     if (pillarLines.length > 0) {
       sections.push(`GRAPH PILLARS: ${pillarLines.join(" | ")}`);
-      session.injectedSections.add("ikong");
+      session.injectedSections.add("ilaqrum");
     }
   }
 
@@ -970,7 +970,7 @@ export async function graphTransformContext(
     systemPromptSection = buildSystemPromptSection(session, tier0ForSys);
     // Mark sections as injected so formatContextMessage() skips them (prevents duplication)
     if (systemPromptSection) {
-      if (systemPromptSection.includes("GRAPH PILLARS")) session.injectedSections.add("ikong");
+      if (systemPromptSection.includes("GRAPH PILLARS")) session.injectedSections.add("ilaqrum");
       if (systemPromptSection.includes("CORE DIRECTIVES")) session.injectedSections.add("tier0");
     }
   } catch { /* non-critical — tier0 will still appear in user message */ }

@@ -1,12 +1,12 @@
 {
-  "name": "kongbrain",
+  "name": "laqrumbrain",
   "version": "0.5.2",
   "description": "Graph-backed persistent memory engine for OpenClaw. Replaces the default context window with SurrealDB + vector embeddings that learn across sessions.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/42U/kongbrain.git"
+    "url": "https://github.com/42U/laqrumbrain.git"
   },
   "keywords": [
     "openclaw",
@@ -25,7 +25,7 @@
     "llm"
   ],
   "bin": {
-    "kongbrain-reembed": "./bin/kongbrain-reembed.ts"
+    "laqrumbrain-reembed": "./bin/laqrumbrain-reembed.ts"
   },
   "openclaw": {
     "extensions": [
@@ -49,7 +49,7 @@
           "SURREAL_DB"
         ],
         "optionalEnv": [
-          "KONGBRAIN_EMBED_PROVIDER",
+          "LAQRUMBRAIN_EMBED_PROVIDER",
           "EMBED_MODEL_PATH",
           "OPENAI_BASE_URL",
           "OPENAI_API_KEY"

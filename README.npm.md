@@ -1,9 +1,9 @@
-# KongBrain
+# LaqrumBrain
 
-[![npm](https://img.shields.io/npm/v/kongbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/kongbrain)
-[![ClawHub](https://img.shields.io/badge/ClawHub-kongbrain-ff6b35?style=for-the-badge)](https://clawhub.ai/packages/kongbrain)
-[![GitHub Stars](https://img.shields.io/github/stars/42U/kongbrain?style=for-the-badge&logo=github&color=gold)](https://github.com/42U/kongbrain)
-[![License: MIT](https://img.shields.io/github/license/42U/kongbrain?style=for-the-badge&logo=opensourceinitiative&color=blue)](https://opensource.org/licenses/MIT)
+[![npm](https://img.shields.io/npm/v/laqrumbrain?style=for-the-badge&logo=npm&color=cb3837)](https://www.npmjs.com/package/laqrumbrain)
+[![ClawHub](https://img.shields.io/badge/ClawHub-laqrumbrain-ff6b35?style=for-the-badge)](https://clawhub.ai/packages/laqrumbrain)
+[![GitHub Stars](https://img.shields.io/github/stars/42U/laqrumbrain?style=for-the-badge&logo=github&color=gold)](https://github.com/42U/laqrumbrain)
+[![License: MIT](https://img.shields.io/github/license/42U/laqrumbrain?style=for-the-badge&logo=opensourceinitiative&color=blue)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0-ff00a0?style=for-the-badge&logo=surrealdb&logoColor=white)](https://surrealdb.com)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff6b35?style=for-the-badge)](https://github.com/openclaw/openclaw)
@@ -15,7 +15,7 @@
 >
 > *When a conversation gets too long, the lobster brain does what lobsters do best: it panics, truncates everything before message 47, and carries on like nothing happened. Your carefully explained architecture? Gone. That bug you described in detail twenty minutes ago? Never heard of it.*
 >
-> *KongBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
+> *LaqrumBrain is a brain transplant. You're replacing that crustacean context window with a primate cortex — backed by a graph database, vector embeddings, and the kind of persistent memory that lets your AI remember what you said last Tuesday — and judge you for it.*
 
 Persistent memory graph. Vector-embedded, self-scoring, wired to learn across sessions. It extracts skills from what worked, traces causal chains through what broke, reflects on its own failures, and earns an identity through real experience. Every session compounds on the last.
 
@@ -27,7 +27,7 @@ Your assistant stops forgetting. Then it starts getting smarter.
 
 ## What Changes
 
-| | Lobster Brain (default) | Ape Brain (KongBrain) |
+| | Lobster Brain (default) | Ape Brain (LaqrumBrain) |
 |---|---|---|
 | **Memory** | Sliding window. Old messages fall off a cliff. | Graph-persistent. Every turn, concept, skill, and causal chain stored with vector embeddings. |
 | **Recall** | Whatever fits in the context window right now. | Cosine similarity + graph expansion + learned attention scoring across your entire history. |
@@ -60,33 +60,33 @@ Linux — see `https://surrealdb.com/docs/surrealdb/installation` for your distr
 Then start it locally — **change the credentials before use**:
 
 ```bash
-surreal start --user youruser --pass yourpass --bind 127.0.0.1:8042 surrealkv:~/.kongbrain/surreal.db
+surreal start --user youruser --pass yourpass --bind 127.0.0.1:8042 surrealkv:~/.laqrumbrain/surreal.db
 ```
 
 Or with Docker:
 
 ```bash
 docker run -d --name surrealdb -p 127.0.0.1:8042:8000 \
-  -v ~/.kongbrain/surreal-data:/data \
+  -v ~/.laqrumbrain/surreal-data:/data \
   surrealdb/surrealdb:latest start \
   --user youruser --pass yourpass surrealkv:/data/surreal.db
 ```
 
 > **Security note:** Always bind to `127.0.0.1` (not `0.0.0.0`) unless you need remote access. Never use default credentials in production.
 
-### 3. Install KongBrain
+### 3. Install LaqrumBrain
 
 From ClawHub (recommended):
 ```bash
-openclaw plugins install clawhub:kongbrain
+openclaw plugins install clawhub:laqrumbrain
 ```
 
 From npm:
 ```bash
-openclaw plugins install kongbrain
+openclaw plugins install laqrumbrain
 ```
 
-> **Note:** Bare `openclaw plugins install kongbrain` checks ClawHub first, then falls back to npm. Use the `clawhub:` prefix to install from ClawHub explicitly.
+> **Note:** Bare `openclaw plugins install laqrumbrain` checks ClawHub first, then falls back to npm. Use the `clawhub:` prefix to install from ClawHub explicitly.
 
 ### 4. Activate
 
@@ -95,9 +95,9 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 ```json
 {
   "plugins": {
-    "allow": ["kongbrain"],
+    "allow": ["laqrumbrain"],
     "slots": {
-      "contextEngine": "kongbrain"
+      "contextEngine": "laqrumbrain"
     }
   }
 }
@@ -109,9 +109,9 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 openclaw tui
 ```
 
-That's it. KongBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
+That's it. LaqrumBrain uses whatever LLM provider and model you already have configured in OpenClaw (Anthropic, OpenAI, Google, Ollama, whatever). No separate API keys needed for the brain itself.
 
-By default KongBrain runs the BGE-M3 embedding model locally via `node-llama-cpp` — the GGUF (~420MB) auto-downloads from [Hugging Face](https://huggingface.co/BAAI/bge-m3) on first startup. For high-traffic deployments the local model can become a bottleneck on serial embedding calls; in that case switch to any OpenAI-compatible API (real OpenAI, Azure OpenAI, Together, vLLM, LM Studio, Ollama) by changing one config field.
+By default LaqrumBrain runs the BGE-M3 embedding model locally via `node-llama-cpp` — the GGUF (~420MB) auto-downloads from [Hugging Face](https://huggingface.co/BAAI/bge-m3) on first startup. For high-traffic deployments the local model can become a bottleneck on serial embedding calls; in that case switch to any OpenAI-compatible API (real OpenAI, Azure OpenAI, Together, vLLM, LM Studio, Ollama) by changing one config field.
 
 All database tables and indexes are created automatically on first run. No manual setup required.
 
@@ -125,9 +125,9 @@ All options have sensible defaults. Override via plugin config or environment va
 | `surreal.url` | `SURREAL_URL` | `ws://127.0.0.1:8042/rpc` |
 | `surreal.user` | `SURREAL_USER` | (required) |
 | `surreal.pass` | `SURREAL_PASS` | (required) |
-| `surreal.ns` | `SURREAL_NS` | `kong` |
+| `surreal.ns` | `SURREAL_NS` | `laqrum` |
 | `surreal.db` | `SURREAL_DB` | `memory` |
-| `embedding.provider` | `KONGBRAIN_EMBED_PROVIDER` | `local` (or `openai-compat`) |
+| `embedding.provider` | `LAQRUMBRAIN_EMBED_PROVIDER` | `local` (or `openai-compat`) |
 | `embedding.dimensions` | - | `1024` |
 | `embedding.modelPath` | `EMBED_MODEL_PATH` | Auto-downloaded BGE-M3 Q4_K_M |
 | `embedding.openaiCompat.model` | - | `text-embedding-3-small` |
@@ -139,18 +139,18 @@ Full config example:
 ```json
 {
   "plugins": {
-    "allow": ["kongbrain"],
+    "allow": ["laqrumbrain"],
     "slots": {
-      "contextEngine": "kongbrain"
+      "contextEngine": "laqrumbrain"
     },
     "entries": {
-      "kongbrain": {
+      "laqrumbrain": {
         "config": {
           "surreal": {
             "url": "ws://127.0.0.1:8042/rpc",
             "user": "youruser",
             "pass": "yourpass",
-            "ns": "kong",
+            "ns": "laqrum",
             "db": "memory"
           }
         }
@@ -171,13 +171,13 @@ Full config example:
 | **Throughput** | Serial; bottlenecks under high turn volume | High parallelism, batched at 96 inputs/request |
 | **Compatible servers** | n/a | OpenAI, Azure OpenAI, Together, Anyscale, vLLM, LM Studio, Ollama, DeepInfra, Fireworks |
 
-Every embedding is tagged with the provider that produced it. At search time, KongBrain only compares vectors from the active provider — vectors from a different provider live in a different vector space.
+Every embedding is tagged with the provider that produced it. At search time, LaqrumBrain only compares vectors from the active provider — vectors from a different provider live in a different vector space.
 
 When you switch providers, run the included migration tool to re-embed pre-existing rows:
 
 ```bash
-npx kongbrain-reembed --from local-bge-m3 --dry-run    # estimate cost
-npx kongbrain-reembed --from local-bge-m3              # run for real (resumable)
+npx laqrumbrain-reembed --from local-bge-m3 --dry-run    # estimate cost
+npx laqrumbrain-reembed --from local-bge-m3              # run for real (resumable)
 ```
 
 text-embedding-3-small costs ~$0.04 to re-embed a typical 3,400-turn database.
@@ -186,9 +186,9 @@ text-embedding-3-small costs ~$0.04 to re-embed a typical 3,400-turn database.
 
 ## Architecture
 
-### The IKONG Pillars
+### The ILAQRUM Pillars
 
-KongBrain's cognitive architecture follows five functional pillars:
+LaqrumBrain's cognitive architecture follows five functional pillars:
 
 | Pillar | Role | What it does |
 |--------|------|-------------|
@@ -361,7 +361,7 @@ Postflight ──────── Records orchestrator metrics (non-blocking)
 
 ### Between Sessions
 
-At session end, KongBrain runs a combined extraction pass: skill graduation, metacognitive reflection, causal chain consolidation, soul graduation check, and soul evolution. A handoff note is written so the next session wakes up knowing what happened.
+At session end, LaqrumBrain runs a combined extraction pass: skill graduation, metacognitive reflection, causal chain consolidation, soul graduation check, and soul evolution. A handoff note is written so the next session wakes up knowing what happened.
 
 At session start, a wake-up briefing is synthesized from the handoff, recent monologues, soul content (if graduated), and identity state, then injected as inner speech so the agent knows who it is and what it was doing.
 
@@ -397,8 +397,8 @@ Three tools are registered for the LLM:
 ## Development
 
 ```bash
-git clone https://github.com/42U/kongbrain.git
-cd kongbrain
+git clone https://github.com/42U/laqrumbrain.git
+cd laqrumbrain
 pnpm install
 pnpm build
 pnpm test
@@ -410,7 +410,7 @@ Link your local build to OpenClaw:
 openclaw plugins install . --link
 ```
 
-Then set `plugins.slots.contextEngine` to `"kongbrain"` in `~/.openclaw/openclaw.json` and run `openclaw`.
+Then set `plugins.slots.contextEngine` to `"laqrumbrain"` in `~/.openclaw/openclaw.json` and run `openclaw`.
 
 ## Contributing
 

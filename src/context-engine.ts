@@ -1,5 +1,5 @@
 /**
- * KongBrain ContextEngine — OpenClaw plugin implementation.
+ * LaqrumBrain ContextEngine — OpenClaw plugin implementation.
  *
  * Implements the ContextEngine interface using graph-based retrieval,
  * BGE-M3 embeddings, and SurrealDB persistence.
@@ -53,10 +53,10 @@ import { swallow } from "./errors.js";
 import { log } from "./log.js";
 
 /** OpenClaw ContextEngine backed by SurrealDB graph retrieval and BGE-M3 embeddings. */
-export class KongBrainContextEngine implements ContextEngine {
+export class LaqrumBrainContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
-    id: "kongbrain",
-    name: "KongBrain",
+    id: "laqrumbrain",
+    name: "LaqrumBrain",
     version: "0.5.1",
     ownsCompaction: true,
   };
@@ -96,7 +96,7 @@ export class KongBrainContextEngine implements ContextEngine {
         const workspace = this.state.workspaceDir || process.cwd();
         const projectName = workspace.split("/").pop() || "default";
 
-        session.agentId = await store.ensureAgent("kongbrain", "openclaw-default");
+        session.agentId = await store.ensureAgent("laqrumbrain", "openclaw-default");
         session.projectId = await store.ensureProject(projectName);
         await store.linkAgentToProject(session.agentId, session.projectId)
           .catch(e => swallow.warn("bootstrap:linkAgentToProject", e));
@@ -223,7 +223,7 @@ export class KongBrainContextEngine implements ContextEngine {
         "(IDENTITY.md, MEMORY.md, skills/, etc.). You can offer to migrate them into the graph " +
         "database using the introspect tool with action: \"migrate\". This will ingest all .md " +
         "files, convert SKILL.md files into proper skill records you can use, import memories, " +
-        "and archive the originals into .kongbrain-archive/. Ask the user first. " +
+        "and archive the originals into .laqrumbrain-archive/. Ask the user first. " +
         "SOUL.md will be left in place for soul graduation.",
       );
     }
@@ -649,7 +649,7 @@ export class KongBrainContextEngine implements ContextEngine {
               );
               if (this.state.enqueueSystemEvent) {
                 this.state.enqueueSystemEvent(
-                  "[GRADUATION] KongBrain has achieved soul graduation! " +
+                  "[GRADUATION] LaqrumBrain has achieved soul graduation! " +
                   "The agent will share this milestone when ready.",
                   { sessionKey: session.sessionKey },
                 );

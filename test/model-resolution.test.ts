@@ -75,7 +75,7 @@ describe("resolveModelRef", () => {
 
   it("throws when no model is configured anywhere", () => {
     expect(() => resolveModelRef({})).toThrow(
-      "No LLM model configured for KongBrain internal completion",
+      "No LLM model configured for LaqrumBrain internal completion",
     );
   });
 

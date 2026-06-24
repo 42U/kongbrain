@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_EMBEDDING_DIMENSIONS = 1024;
-const DIMENSION_PLACEHOLDER = "__KONGBRAIN_EMBEDDING_DIMENSIONS__";
+const DIMENSION_PLACEHOLDER = "__LAQRUMBRAIN_EMBEDDING_DIMENSIONS__";
 
 export interface LoadSchemaOptions {
   embeddingDimensions?: number;
